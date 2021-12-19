@@ -1,7 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include<conio.h>
 
 int main(){
-    printf("Hoddedededela\n");
-
+    int x=95;
+    printf("Ahora si estamos ready\n");
+    getch();
+    return 0;
 }
