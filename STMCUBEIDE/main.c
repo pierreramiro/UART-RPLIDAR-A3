@@ -115,6 +115,65 @@ uint8_t BinToAsc(uint8_t BinValue)
     return(BinValue + '0');
 }
 
+// Reverses a string 'str' of length 'len'
+void reverse(char* str, int len)
+{
+    int i = 0, j = len - 1, temp;
+    while (i < j) {
+        temp = str[i];
+        str[i] = str[j];
+        str[j] = temp;
+        i++;
+        j--;
+    }
+}
+// Converts a given integer x to string str[].
+// d is the number of digits required in the output.
+// If d is more than the number of digits in x,
+// then 0s are added at the beginning.
+int intToStr(int x, char str[], int d)
+{
+    int i = 0;
+    while (x) {
+        str[i++] = (x % 10) + '0';
+        x = x / 10;
+    }
+
+    // If number of digits required is more, then
+    // add 0s at the beginning
+    while (i < d)
+        str[i++] = '0';
+
+    reverse(str, i);
+    str[i] = '\0';
+    return i;
+}
+
+// Converts a floating-point/double number to a string.
+void ftoa(float n, char* res, int afterpoint)
+{
+    // Extract integer part
+    int ipart = (int)n;
+
+    // Extract floating part
+    float fpart = n - (float)ipart;
+
+    // convert integer part to string
+    int i = intToStr(ipart, res, 3);
+
+    // check for display option after point
+    if (afterpoint != 0) {
+        res[i] = '.'; // add dot
+
+        // Get the value of fraction part upto given no.
+        // of points after dot. The third parameter
+        // is needed to handle cases like 233.007
+        fpart = fpart * pow(10, afterpoint);
+
+        intToStr((int)fpart, res + i + 1, afterpoint);
+    }
+}
+
 void printf_pkt(uint8_t* cmd, uint8_t size){
 	uint8_t ascii_chars[size*3];
 	for (int i=0;i<size;i++){
@@ -131,18 +190,36 @@ void printf_data(uint8_t* pkt){
 
 	uint8_t quality;
 	uint16_t angle,distance;
+	float result;
+	char ascii_chars[30];
+	/****Decodificamos el Quality****/
 	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Quality: ", 9, 30);
-	quality=(pkt[1]>>2);
-
+	//Realizamos el desplazamiento y el bitmasking
+	quality=(pkt[1]>>2)&0x3F;
+	//Convertimos el uint8_t en ascii
+	intToStr((int)quality,ascii_chars,2);
+	//Transmitimos por el serial
+	HAL_UART_Transmit(&hlpuart1,ascii_chars, 2, 30);
+	/****Decodificamos el Angle****/
 	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tAngle: ", 8, 30);
-	angle=(pkt[2]>>1);
-	angle|=(pkt[3]<<8);
-
+	//Desplazamos los bits
+	angle=(pkt[2]>>1)&0x7F;
+	angle|=(pkt[3]<<7);
+	//Procedemos a convertir el halfword en ascii
+	result=(float)angle/64.0;
+	ftoa(result,ascii_chars,3);
+	HAL_UART_Transmit(&hlpuart1,ascii_chars, 7, 30);
+	/****Decodificamos la distancia****/
 	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tDistance: ", 11, 30);
+	//Desplazamos los bits
 	distance=pkt[4];
 	distance|=(pkt[4]<<8);
-
-	HAL_UART_Transmit(&hlpuart1, "\n\r", 2, 100);
+	//Procedemos a convertir el halfword en ascii
+	result=(float)distance/4.0;
+	ftoa(result,ascii_chars,5);
+	HAL_UART_Transmit(&hlpuart1,ascii_chars, 9, 30);
+	//Imprimos una nueva línea
+	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
 }
 
 void SEND_STOP_REQUEST(){
