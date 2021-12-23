@@ -229,9 +229,7 @@ void setMotorDutyCycle(float duty){
 		HAL_Delay(3);
 
 	}
-
 }
-
 void SEND_STOP_REQUEST(){
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,STOP_RPL};
@@ -254,7 +252,7 @@ void SEND_RESET_REQUEST(){
 }
 void SEND_SCAN_REQUEST(){
 	//Encendemos el motor
-	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+	setMotorDutyCycle(25);
 	HAL_Delay(900);
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,SCAN_RPL};
@@ -494,33 +492,23 @@ int main(void)
   while (1)
   {
 
-	  setMotorDutyCycle(25);
 	  //HAL_UART_Receive(&huart1, eraser_reg,70 , 4);
 	  //Esperamos a que se presione el Boton
-	  //HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
+	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
 	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  //Esperamos que se suelte
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
-	  //SEND_SCAN_REQUEST();
-	  setMotorDutyCycle(50);
-	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	  SEND_SCAN_REQUEST();
 
-	  setMotorDutyCycle(75);
-	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  setMotorDutyCycle(100);
-	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  //SEND_GET_HEALTH_REQUEST();
+  	  //SEND_GET_HEALTH_REQUEST();
 	  /*Verificamos si estamos en Protection STOP*/
 
 	  /*Reseteamos en caso sea necesario*/
 
 	  //go to get_health_request
 	  /*Habilitamos el motos*/
-	  //HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
+	  setMotorDutyCycle(50);
 	  //HAL_Delay(500);
 	  /*Enviamos el comando SCAN*/
 	  //SEND_SCAN_REQUEST();
@@ -533,16 +521,16 @@ int main(void)
 	  SEND_GET_HEALTH_REQUEST();
 	  SEND_SCAN_REQUEST();
 	  //while (UserButtonStatus == 0);
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+	  setMotorDutyCycle(50);
 	  //HAL_Delay(3000);
 	  SEND_SCAN_REQUEST();
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_SET);
-  	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
+	  setMotorDutyCycle(50);
+	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
   	  HAL_Delay(6000);
   	  SEND_GET_HEALTH_REQUEST();//ocurre error
   	  //SEND_STOP_REQUEST();
-  	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
-  	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
+  	  setMotorDutyCycle(50);
+	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
   	  HAL_Delay(6000);
   	  SEND_GET_HEALTH_REQUEST();
   	  */
