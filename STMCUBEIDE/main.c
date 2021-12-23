@@ -18,7 +18,8 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-
+#include "string.h"
+#include <math.h>
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
@@ -75,12 +76,6 @@ static void MX_DMA_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
-
-
-
-
-
-
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle){
   /* Set transmission flag: transfer complete */
   UartReady = SET;
@@ -116,7 +111,7 @@ uint8_t BinToAsc(uint8_t BinValue)
 }
 
 // Reverses a string 'str' of length 'len'
-void reverse(char* str, int len)
+void reverse(uint8_t* str, int len)
 {
     int i = 0, j = len - 1, temp;
     while (i < j) {
@@ -131,7 +126,7 @@ void reverse(char* str, int len)
 // d is the number of digits required in the output.
 // If d is more than the number of digits in x,
 // then 0s are added at the beginning.
-int intToStr(int x, char str[], int d)
+int intToStr(int x, uint8_t str[], int d)
 {
     int i = 0;
     while (x) {
@@ -150,7 +145,7 @@ int intToStr(int x, char str[], int d)
 }
 
 // Converts a floating-point/double number to a string.
-void ftoa(float n, char* res, int afterpoint)
+void ftoa(float n, uint8_t* res, int afterpoint)
 {
     // Extract integer part
     int ipart = (int)n;
@@ -191,7 +186,7 @@ void printf_data(uint8_t* pkt){
 	uint8_t quality;
 	uint16_t angle,distance;
 	float result;
-	char ascii_chars[30];
+	uint8_t ascii_chars[30];
 	/****Decodificamos el Quality****/
 	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Quality: ", 9, 30);
 	//Realizamos el desplazamiento y el bitmasking
