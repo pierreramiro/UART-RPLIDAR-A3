@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "math.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -84,7 +85,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle){
 }
 void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
 	if (huart->Instance==USART1){
-		memcpy (MainBuf,RxBuf,Size);
+		//memcpy (MainBuf,RxBuf,Size);
 		//HAL_UARTEx_ReceiveToIdle_DMA(&huart1,RxBuf,Size)
 	}
 }
@@ -146,7 +147,7 @@ int intToStr(int x, uint8_t str[], int d)
 }
 
 // Converts a floating-point/double number to a string.
-void ftoa(float n, uint8_t* res, int afterpoint)
+void ftoa(float n, uint8_t* res, int beforepoint,int afterpoint)
 {
     // Extract integer part
     int ipart = (int)n;
@@ -155,7 +156,7 @@ void ftoa(float n, uint8_t* res, int afterpoint)
     float fpart = n - (float)ipart;
 
     // convert integer part to string
-    int i = intToStr(ipart, res, 3);
+    int i = intToStr(ipart, res, beforepoint);
 
     // check for display option after point
     if (afterpoint != 0) {
@@ -164,7 +165,7 @@ void ftoa(float n, uint8_t* res, int afterpoint)
         // Get the value of fraction part upto given no.
         // of points after dot. The third parameter
         // is needed to handle cases like 233.007
-        fpart = fpart * pow(10, afterpoint);
+        fpart = fpart * (float)(pow(10, afterpoint));
 
         intToStr((int)fpart, res + i + 1, afterpoint);
     }
@@ -183,42 +184,53 @@ void printf_pkt(uint8_t* cmd, uint8_t size){
 }
 
 void printf_data(uint8_t* pkt){
-
-	uint8_t quality;
+	uint8_t S,notS,C,quality;
 	uint16_t angle,distance;
 	float result;
 	uint8_t ascii_chars[30];
-
-	/****Decodificamos el Quality****/
-	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Quality: ", 9, 30);
-	//Realizamos el desplazamiento y el bitmasking
-	quality=(pkt[1]>>2)&0x3F;
-	//Convertimos el uint8_t en ascii
-	intToStr((int)quality,ascii_chars,2);
-	//Transmitimos por el serial
-	HAL_UART_Transmit(&hlpuart1,ascii_chars, 2, 30);
-	/****Decodificamos el Angle****/
-	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tAngle: ", 8, 30);
-	//Desplazamos los bits
-	angle=(pkt[2]>>1)&0x7F;
-	angle|=(pkt[3]<<7);
-	//Procedemos a convertir el halfword en ascii
-	result=(float)angle/64.0;
-	ftoa(result,ascii_chars,3);
-	HAL_UART_Transmit(&hlpuart1,ascii_chars, 7, 30);
-	/****Decodificamos la distancia****/
-	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tDistance: ", 11, 30);
-	//Desplazamos los bits
-	distance=pkt[4];
-	distance|=(pkt[4]<<8);
-	//Procedemos a convertir el halfword en ascii
-	result=(float)distance/4.0;
-	ftoa(result,ascii_chars,5);
-	HAL_UART_Transmit(&hlpuart1,ascii_chars, 9, 30);
+	/****Decodificamos el checkbit****/
+	C=pkt[1]&0xFE;
+	/****Decodificamos la bandera Flag****/
+	S=pkt[0]&0xFE;
+	notS=(pkt[0]>>1)&0xFE;
+	if ((S^notS)&&(C)){
+		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"S: ", 9, 30);
+		//Convertimos el uint8_t en ascii
+		intToStr((int)S,ascii_chars,1);
+		//Transmitimos por el serial
+		HAL_UART_Transmit(&hlpuart1,ascii_chars, 1, 30);
+		/****Decodificamos el Quality****/
+		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tQuality: ", 9, 30);
+		//Realizamos el desplazamiento y el bitmasking
+		quality=(pkt[1]>>2)&0x3F;
+		//Convertimos el uint8_t en ascii
+		intToStr((int)quality,ascii_chars,2);
+		//Transmitimos por el serial
+		HAL_UART_Transmit(&hlpuart1,ascii_chars, 2, 30);
+		/****Decodificamos el Angle****/
+		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tAngle: ", 8, 30);
+		//Desplazamos los bits
+		angle=(pkt[2]>>1)&0x7F;
+		angle|=(pkt[3]<<7);
+		//Procedemos a convertir el halfword en ascii
+		result=(float)angle/64.0;
+		ftoa(result,ascii_chars,3,3);
+		HAL_UART_Transmit(&hlpuart1,ascii_chars, 7, 30);
+		/****Decodificamos la distancia****/
+		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tDistance: ", 11, 30);
+		//Desplazamos los bits
+		distance=pkt[4];
+		distance|=(pkt[4]<<8);
+		//Procedemos a convertir el halfword en ascii
+		result=(float)distance/4.0;
+		ftoa(result,ascii_chars,5,3);
+		HAL_UART_Transmit(&hlpuart1,ascii_chars, 9, 30);
+	}else{
+		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Data error", 10, 30);
+	}
 	//Imprimos una nueva línea
 	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
 }
-
 void setMotorDutyCycle(float duty){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_Delay(3);
@@ -229,6 +241,55 @@ void setMotorDutyCycle(float duty){
 		HAL_Delay(3);
 
 	}
+}
+void getRPM(float duty){
+	//Definimos las variables
+	uint8_t S,notS,C,pkt[7],SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
+	uint32_t time=0;
+	int count=0;
+	float velocity;
+
+	//Detenemos el motor y establecemos el dutycycle
+	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+	HAL_Delay(3);
+	TIM1->CCR2 = (uint32_t)(duty*68);//El ARR tiene como valor máximo 6799
+	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+	HAL_Delay(1000);//Esperamos estabilidad del motor
+	//Enviamos el SCAN_REQUEST
+	if (HAL_UART_Transmit_IT(&huart1,SCAN_REQUEST,2) != HAL_OK){//(uart handle,tx pointer,size, timeout)
+		Error_Handler();
+	}
+	//Esperamos que se envie todo
+	while (UartReady != SET);
+	UartReady = RESET;
+	//Recepcionamos los 7 bytes del descriptor
+	HAL_UART_Receive(&huart1,pkt,7,1);//(uart handle,tx pointer,size, timeout)
+
+	//Recepcionamos los 5 bytes del response
+	do{
+		HAL_UART_Receive(&huart1,pkt,5,1);//(uart handle,tx pointer,size, timeout)
+
+		/****Decodificamos el checkbit****/
+		C=pkt[1]&0xFE;
+		/****Decodificamos la bandera Flag****/
+		S=pkt[0]&0xFE;
+		notS=(pkt[0]>>1)&0xFE;
+		if ((S^notS)&&(C)){
+			if (S){
+				time=HAL_GetTick()-time;
+				count++;
+			}
+		}
+	}while(count==2);
+	velocity=60000/time;
+	uint8_t ascii_chars[10];
+	//Procedemos a convertir el float en ascii
+	ftoa(velocity,ascii_chars,4,3);
+	//Imprimimos en pantalla el resultado
+	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Velocidad: ", 11, 30);
+	HAL_UART_Transmit(&hlpuart1,ascii_chars, 8, 30);
+	//Imprimos una nueva línea
+	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
 }
 void SEND_STOP_REQUEST(){
 	//Definimos el comando
@@ -499,7 +560,8 @@ int main(void)
 	  //Esperamos que se suelte
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
-	  SEND_SCAN_REQUEST();
+	  //SEND_SCAN_REQUEST();
+	  getRPM(75);
 
   	  //SEND_GET_HEALTH_REQUEST();
 	  /*Verificamos si estamos en Protection STOP*/
@@ -508,7 +570,7 @@ int main(void)
 
 	  //go to get_health_request
 	  /*Habilitamos el motos*/
-	  setMotorDutyCycle(50);
+	  //setMotorDutyCycle(50);
 	  //HAL_Delay(500);
 	  /*Enviamos el comando SCAN*/
 	  //SEND_SCAN_REQUEST();
