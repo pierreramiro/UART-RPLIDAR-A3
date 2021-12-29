@@ -48,7 +48,7 @@
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
 #define  RxBuf_SIZE 		10
-#define  MainBuf_SIZE 		(2<<13)//8192
+#define  MainBuf_SIZE 		(2<<13)//13->8192 16->65536
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -319,7 +319,7 @@ void SEND_RESET_REQUEST(){
 
 void SEND_SCAN_REQUEST(){
 	//Encendemos el motor
-	setMotorDutyCycle(50);
+	setMotorDutyCycle(60);
 	//Enviamos el comando por uart
 	UART1buf_flushRx();
 	UART1buf_putn(SCAN_REQUEST,2);
@@ -330,6 +330,7 @@ void SEND_SCAN_REQUEST(){
 	}
 	//Detenemos la trama del SCAN
 	UART1buf_putn(STOP_REQUEST, 2);
+	setMotorDutyCycle(0);
 	UART1buf_flushRx();
 	//while(1);//analizamos si el comando STOP funciona.
 	//Comparamos con lo que se debe recibir y si es correcto
@@ -341,7 +342,7 @@ void SEND_SCAN_REQUEST(){
 		}
 	}
 	//Decodificamos los valores escaneados
-	for(int i=0;i<1440;i++){
+	for(int i=0;i<1600;i++){
 		printf_pkt(&MainBuf[5*i+7],5);
 		printf_data(&MainBuf[5*i+7]);
 	}
