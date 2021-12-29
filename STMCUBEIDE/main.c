@@ -48,7 +48,7 @@
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
 #define  RxBuf_SIZE 		10
-#define  MainBuf_SIZE 		20
+#define  MainBuf_SIZE 		(2<<13)//8192
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -246,52 +246,57 @@ void setMotorDutyCycle(float duty){
 }
 void getRPM(float duty){
 	//Definimos las variables
-	uint8_t S,notS,C,pkt[7],SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
-	uint32_t time=0;
+	uint8_t byte,S,notS,C;
+	uint32_t tiempo=0;
 	int count=0;
 	float velocity;
-
 	//Detenemos el motor y establecemos el dutycycle
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_Delay(3);
 	TIM1->CCR2 = (uint32_t)(duty*68);//El ARR tiene como valor máximo 6799
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-	HAL_Delay(1000);//Esperamos estabilidad del motor
-	//Enviamos el SCAN_REQUEST
-	if (HAL_UART_Transmit_IT(&huart1,SCAN_REQUEST,2) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
+	//Enviamos el comando por uart
+	UART1buf_flushRx();
+	UART1buf_putn(SCAN_REQUEST,2);
+	//Comenzamos a recibir los valores y lo escribimos en el buffer principal.
+	for(unsigned int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		UART1buf_getc();
 	}
-	//Esperamos que se envie todo
-	while (UartReady != SET);
-	UartReady = RESET;
-	//Recepcionamos los 7 bytes del descriptor
-	HAL_UART_Receive(&huart1,pkt,7,1);//(uart handle,tx pointer,size, timeout)
-
-	//Recepcionamos los 5 bytes del response
-	do{
-		HAL_UART_Receive(&huart1,pkt,5,1);//(uart handle,tx pointer,size, timeout)
-
-		/****Decodificamos el checkbit****/
-		C=pkt[1]&0xFE;
+	for(unsigned int i=0;i<1500;i++){
+		while(UART1buf_peek()<0);
+		byte=UART1buf_getc();
 		/****Decodificamos la bandera Flag****/
-		S=pkt[0]&0xFE;
-		notS=(pkt[0]>>1)&0xFE;
-		if ((S^notS)&&(C)){
-			if (S){
-				time=HAL_GetTick()-time;
+		S=byte&0x01;
+		if (S){
+			notS=(byte>>1)&0x01;
+			if(notS==0){
+				tiempo=tiempo-HAL_GetTick();
 				count++;
 			}
 		}
-	}while(count==2);
-	velocity=60000/time;
+		for(unsigned int j=0;j<4;j++){
+			while(UART1buf_peek()<0);
+			UART1buf_getc();
+		}
+	}
+	//Detenemos la trama del SCAN
+	UART1buf_putn(STOP_REQUEST, 2);
+	UART1buf_flushRx();
+	//Calculamos la velocidad
+	velocity=60000.0/(float)tiempo;
 	char ascii_chars[10];
 	//Procedemos a convertir el float en ascii
 	ftoa(velocity,ascii_chars,4,3);
 	//Imprimimos en pantalla el resultado
-	HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Velocidad: ", 11, 30);
-	HAL_UART_Transmit(&hlpuart1,ascii_chars, 8, 30);
+	if(count==0){
+		LPUART1buf_puts((char*)"Error");
+	}else{
+		LPUART1buf_puts((char*)"Velocidad: ");
+		LPUART1buf_puts(ascii_chars);
+	}
 	//Imprimos una nueva línea
-	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
+	LPUART1buf_puts((char*)"\n\r");
 }
 void SEND_STOP_REQUEST(){
 	//Enviamos el comando por uart
@@ -312,8 +317,38 @@ void SEND_RESET_REQUEST(){
 	UART1buf_flushRx();
 }
 
-
 void SEND_SCAN_REQUEST(){
+	//Encendemos el motor
+	setMotorDutyCycle(50);
+	//Enviamos el comando por uart
+	UART1buf_flushRx();
+	UART1buf_putn(SCAN_REQUEST,2);
+	//Comenzamos a recibir los valores y lo escribimos en el buffer principal.
+	for(unsigned int i=0;i<1600*5+7;i++){
+		while(UART1buf_peek()<0);
+		MainBuf[i]=UART1buf_getc();
+	}
+	//Detenemos la trama del SCAN
+	UART1buf_putn(STOP_REQUEST, 2);
+	UART1buf_flushRx();
+	//while(1);//analizamos si el comando STOP funciona.
+	//Comparamos con lo que se debe recibir y si es correcto
+	for (int i=0;i<7;i++){
+		if (SCAN_DESCRIPTOR[i]!=MainBuf[i]){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			printf_pkt(MainBuf,7);
+			while(1);
+		}
+	}
+	//Decodificamos los valores escaneados
+	for(int i=0;i<1440;i++){
+		printf_pkt(&MainBuf[5*i+7],5);
+		printf_data(&MainBuf[5*i+7]);
+	}
+}
+
+
+void SEND_SCAN_REQUEST_ov(){
 	//Encendemos el motor
 	setMotorDutyCycle(50);
 	//Esperamos que se estabilice
@@ -537,14 +572,7 @@ int main(void)
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
 	  SEND_SCAN_REQUEST();
-
-	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  //Esperamos que se suelte
-	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  /*Enviamos el comando GET_HEALTH*/
-	  SEND_STOP_REQUEST();
-
-	  //getRPM(75);
+	  //getRPM(50);
 
   	  //SEND_GET_HEALTH_REQUEST();
 	  /*Verificamos si estamos en Protection STOP*/
