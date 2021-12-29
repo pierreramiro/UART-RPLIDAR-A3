@@ -19,6 +19,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
 #include "math.h"
+#include "uart_buf_g4.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -68,14 +69,16 @@ __IO ITStatus UartReady = RESET;
 __IO ITStatus UserButtonStatus = 0;  /* set to 1 after User Button interrupt  */
 uint8_t RxBuf[RxBuf_SIZE];
 uint8_t MainBuf[MainBuf_SIZE];
+const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
+const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
+const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
+const uint8_t SCAN_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x05,0x00,0x00,0x40,0x81};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_LPUART1_UART_Init(void);
-static void MX_DMA_Init(void);
-static void MX_USART1_UART_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -106,14 +109,14 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
     UserButtonStatus = 1;
   }
 }
-uint8_t BinToAsc(uint8_t BinValue)
+uint8_t  BinToAsc(uint8_t  BinValue)
 {
     BinValue &= 0x0F;
     if(BinValue > 9) BinValue += 7;
     return(BinValue + '0');
 }
 // Reverses a string 'str' of length 'len'
-void reverse(uint8_t* str, int len)
+void reverse(char* str, int len)
 {
     int i = 0, j = len - 1, temp;
     while (i < j) {
@@ -128,14 +131,13 @@ void reverse(uint8_t* str, int len)
 // d is the number of digits required in the output.
 // If d is more than the number of digits in x,
 // then 0s are added at the beginning.
-int intToStr(int x, uint8_t str[], int d)
+int intToStr(int x, char str[], int d)
 {
     int i = 0;
     while (x) {
         str[i++] = (x % 10) + '0';
         x = x / 10;
     }
-
     // If number of digits required is more, then
     // add 0s at the beginning
     while (i < d)
@@ -147,7 +149,7 @@ int intToStr(int x, uint8_t str[], int d)
 }
 
 // Converts a floating-point/double number to a string.
-void ftoa(float n, uint8_t* res, int beforepoint,int afterpoint)
+void ftoa(float n, char* res, int beforepoint,int afterpoint)
 {
     // Extract integer part
     int ipart = (int)n;
@@ -171,65 +173,65 @@ void ftoa(float n, uint8_t* res, int beforepoint,int afterpoint)
     }
 }
 
-void printf_pkt(uint8_t* cmd, uint8_t size){
-	uint8_t ascii_chars[size*3];
+void printf_pkt(uint8_t * cmd, uint8_t size){
+	char  ascii_chars[size*3];
 	for (int i=0;i<size;i++){
-		ascii_chars[3*i]=BinToAsc(cmd[i]>>4);
-		ascii_chars[3*i+1]=BinToAsc(cmd[i]);
+		ascii_chars[3*i]=(char)BinToAsc(cmd[i]>>4);
+		ascii_chars[3*i+1]=(char)BinToAsc(cmd[i]);
 		ascii_chars[3*i+2]='-';
 	}
-	HAL_UART_Transmit(&hlpuart1, ascii_chars, size*3, 300);
-	uint8_t new_line[2]="\n\r";
-	HAL_UART_Transmit(&hlpuart1, new_line, 2, 100);
+	ascii_chars[3*size-1]=0;
+	LPUART1buf_puts(ascii_chars);
+	LPUART1buf_puts((char *) "\n\r");
 }
 
 void printf_data(uint8_t* pkt){
-	uint8_t S,notS,C,quality;
+	char S,notS,C,quality;
 	uint16_t angle,distance;
 	float result;
-	uint8_t ascii_chars[30];
+	char ascii_chars[30];
 	/****Decodificamos el checkbit****/
-	C=pkt[1]&0xFE;
+	C=pkt[1]&0x01;
 	/****Decodificamos la bandera Flag****/
-	S=pkt[0]&0xFE;
-	notS=(pkt[0]>>1)&0xFE;
+	S=pkt[0]&0x01;
+	notS=(pkt[0]>>1)&0x01;
 	if ((S^notS)&&(C)){
-		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"S: ", 9, 30);
+		LPUART1buf_puts((char*)"S: ");
 		//Convertimos el uint8_t en ascii
-		intToStr((int)S,ascii_chars,1);
+		intToStr(S,ascii_chars,1);
 		//Transmitimos por el serial
-		HAL_UART_Transmit(&hlpuart1,ascii_chars, 1, 30);
+		LPUART1buf_puts(ascii_chars);
 		/****Decodificamos el Quality****/
-		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tQuality: ", 9, 30);
+		LPUART1buf_puts((char*)"\tQuality: ");
 		//Realizamos el desplazamiento y el bitmasking
 		quality=(pkt[1]>>2)&0x3F;
 		//Convertimos el uint8_t en ascii
 		intToStr((int)quality,ascii_chars,2);
 		//Transmitimos por el serial
-		HAL_UART_Transmit(&hlpuart1,ascii_chars, 2, 30);
+		LPUART1buf_puts(ascii_chars);
 		/****Decodificamos el Angle****/
-		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tAngle: ", 8, 30);
+		LPUART1buf_puts((char*)"\tAngle: ");
 		//Desplazamos los bits
 		angle=(pkt[2]>>1)&0x7F;
 		angle|=(pkt[3]<<7);
 		//Procedemos a convertir el halfword en ascii
 		result=(float)angle/64.0;
 		ftoa(result,ascii_chars,3,3);
-		HAL_UART_Transmit(&hlpuart1,ascii_chars, 7, 30);
+		LPUART1buf_puts(ascii_chars);
 		/****Decodificamos la distancia****/
-		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"\tDistance: ", 11, 30);
+		LPUART1buf_puts((char*)"\tDistance: ");
 		//Desplazamos los bits
 		distance=pkt[4];
 		distance|=(pkt[4]<<8);
-		//Procedemos a convertir el halfword en ascii
+		//Procedemos a convertir la distancia
 		result=(float)distance/4.0;
 		ftoa(result,ascii_chars,5,3);
-		HAL_UART_Transmit(&hlpuart1,ascii_chars, 9, 30);
+		LPUART1buf_puts(ascii_chars);
 	}else{
-		HAL_UART_Transmit(&hlpuart1,(uint8_t*)"Data error", 10, 30);
+		LPUART1buf_puts((char*)"Data error");
 	}
 	//Imprimos una nueva línea
-	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
+	LPUART1buf_puts((char*)"\n\r");
 }
 void setMotorDutyCycle(float duty){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
@@ -282,7 +284,7 @@ void getRPM(float duty){
 		}
 	}while(count==2);
 	velocity=60000/time;
-	uint8_t ascii_chars[10];
+	char ascii_chars[10];
 	//Procedemos a convertir el float en ascii
 	ftoa(velocity,ascii_chars,4,3);
 	//Imprimimos en pantalla el resultado
@@ -292,93 +294,64 @@ void getRPM(float duty){
 	HAL_UART_Transmit(&hlpuart1, (uint8_t*)"\n\r", 2, 100);
 }
 void SEND_STOP_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,STOP_RPL};
 	//Enviamos el comando por uart
-	if (HAL_UART_Transmit(&huart1,cmd,2,3) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
+	setMotorDutyCycle(0);
+	UART1buf_putn(STOP_REQUEST,2);
 	//Delay >2ms para poder enviar otro request
 	HAL_Delay(2);
 }
 void SEND_RESET_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,RESET_RPL};
 	//Enviamos el comando por uart
-	if (HAL_UART_Transmit(&huart1,cmd,2,3) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
+	UART1buf_putn(RESET_REQUEST,2);
 	//Delay >2ms para poder enviar otro request
 	HAL_Delay(2);
+	//Esperamos a recibir la data basura
+	while(UART1buf_peek()<0);
+	//Esperamos a leer/flush la data basura
+	while(UART1buf_getc()>0);
+	UART1buf_flushRx();
 }
+
+
 void SEND_SCAN_REQUEST(){
 	//Encendemos el motor
-	setMotorDutyCycle(25);
+	setMotorDutyCycle(50);
+	//Esperamos que se estabilice
 	HAL_Delay(900);
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,SCAN_RPL};
-	//Definimos el "response descriptor" a recibir
-	uint8_t resp_des[7]={START_FLAG_1,START_FLAG_2,0x05,0x00,0x00,0x40,0x81};
-	//Definimos el tamaño del buffer de rx
-	uint8_t rx_size=7;
-	//Definimos el buffer de recepción
-	uint8_t rx_buffer[rx_size];
+	//definimos el arreglo que contendrá los datos
+	uint8_t data[7];
 	//Enviamos el comando por uart
-	if (HAL_UART_Transmit_IT(&huart1,cmd,2) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Esperamos que se envie todo
-	while (UartReady != SET);
-	UartReady = RESET;
-	//Comenzamos la recepción del descriptor
-	if (HAL_UART_Receive(&huart1,rx_buffer,rx_size,3) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Verificamos si hubo error
-	int count=0;
+	UART1buf_putn(SCAN_REQUEST,2);
+	//Comenzamos a recibir los valores. Y comparamos con lo que se debe recibir
+	uint8_t count=0;
 	for (int i=0;i<7;i++){
-		if (rx_buffer[i]!=resp_des[i]) break;
+		//Debemos esperar a que el buffer no este vacío
+		while(UART1buf_peek()<0);
+		data[i]=UART1buf_getc();
+		if (SCAN_DESCRIPTOR[i]!=data[i]) break;
 		count++;
 	}
 	//verificamos si la data llego correctamente
 	if (count!=7){
 		//Hubo ERROR de transferencia.
-		//Imprimimos data enviandolo por el UART del COM7 de la compu
-		HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Error\n\r", 7, 300);
-		printf_pkt(resp_des,7);
-		printf_pkt(rx_buffer,7);
+		//Imprimimos data enviandolo por el LPUART
+		LPUART1buf_puts((char*)"Error\n\r");
+		printf_pkt(SCAN_DESCRIPTOR,count);
+		printf_pkt(data,count);
 		while(1);
 	}
-
-	/*//Comenzamos la recepción de la data
-	if (HAL_UARTEx_ReceiveToIdle_DMA(&huart1,RxBuf,RxBuf_SIZE) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}*/
-	//Continuamos recibiendo datos de 5 bytes y lo guardamos en la memoria
+	//Continuamos recibiendo obteniendo datos de 5 del buffer y lo imprimimos en pantalla
 	while(1){
-		HAL_UART_Receive(&huart1,rx_buffer,5,1);//(uart handle,tx pointer,size, timeout)
-		printf_pkt(rx_buffer,5);
-		printf_data(rx_buffer);
+		for (int i=0;i<5;i++){
+			//Debemos esperar a que el buffer no este vacío
+			while(UART1buf_peek()<0);
+			data[i]=UART1buf_getc();
+		}
+		printf_pkt(data,5);
+		printf_data(data);
 	}
-
-
-	/*
-	//Comenzamos la recepción
-	if (HAL_UART_Receive_IT(&huart1,rx_buffer,rx_size+99*5) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Esperamos a completar la recepción
-	//while (UartReady != SET);
-	//UartReady = RESET;
-	//Imprimimos data enviandolo por el UART del COM7 de la compu
-	HAL_UART_Transmit(&hlpuart1, (uint8_t*) "Scan Data:\n\r", 12, 300);
-	printf_pkt(rx_buffer,rx_size);
-	for(unsigned int i=0;i<99*5;i++){
-		printf_pkt(&rx_buffer[rx_size+5*i],rx_size-7);
-	}
-	HAL_UART_Transmit(&hlpuart1, (uint8_t*) "Fin Scan:\n\r", 11, 300);
-	*/
 }
+
 void SEND_EXPRESS_SCAN_REQUEST(){
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,EXPRESS_SCAN_RPL};
@@ -541,27 +514,37 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_LPUART1_UART_Init();
-  MX_DMA_Init();
-  MX_USART1_UART_Init();
+  //MX_LPUART1_UART_Init();
+  //MX_DMA_Init();
+  //MX_USART1_UART_Init();
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
+  LPUART1buf_init(115200,SERIAL_8N1,0);
+  UART1buf_init(256000,SERIAL_8N1,0);
+  //SEND_RESET_REQUEST();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-
 	  //HAL_UART_Receive(&huart1, eraser_reg,70 , 4);
 	  //Esperamos a que se presione el Boton
-	  HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
+	  LPUART1buf_puts((char*)"Comando linea:\n\r");
+	  //HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
 	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  //Esperamos que se suelte
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
-	  //SEND_SCAN_REQUEST();
-	  getRPM(75);
+	  SEND_SCAN_REQUEST();
+
+	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	  //Esperamos que se suelte
+	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	  /*Enviamos el comando GET_HEALTH*/
+	  SEND_STOP_REQUEST();
+
+	  //getRPM(75);
 
   	  //SEND_GET_HEALTH_REQUEST();
 	  /*Verificamos si estamos en Protection STOP*/
@@ -646,102 +629,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 }
-
-/**
-  * @brief LPUART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_LPUART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN LPUART1_Init 0 */
-
-  /* USER CODE END LPUART1_Init 0 */
-
-  /* USER CODE BEGIN LPUART1_Init 1 */
-
-  /* USER CODE END LPUART1_Init 1 */
-  hlpuart1.Instance = LPUART1;
-  hlpuart1.Init.BaudRate = 115200;
-  hlpuart1.Init.WordLength = UART_WORDLENGTH_8B;
-  hlpuart1.Init.StopBits = UART_STOPBITS_1;
-  hlpuart1.Init.Parity = UART_PARITY_NONE;
-  hlpuart1.Init.Mode = UART_MODE_TX_RX;
-  hlpuart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  hlpuart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  hlpuart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  hlpuart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&hlpuart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&hlpuart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&hlpuart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&hlpuart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN LPUART1_Init 2 */
-
-  /* USER CODE END LPUART1_Init 2 */
-
-}
-
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 256000;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart1.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart1.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart1.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart1, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart1, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_EnableFifoMode(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
 /**
   * @brief TIM1 Initialization Function
   * @param None
@@ -821,26 +708,6 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 2 */
   HAL_TIM_MspPostInit(&htim1);
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMAMUX1_CLK_ENABLE();
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 
