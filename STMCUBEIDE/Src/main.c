@@ -48,7 +48,7 @@
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
 #define  RxBuf_SIZE 		10
-#define  MainBuf_SIZE 		(2<<13)//13->8192 16->65536
+#define  MainBuf_SIZE 		(2<<14)//13->8192 14->16384 16->65536
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -318,13 +318,51 @@ void SEND_RESET_REQUEST(){
 }
 
 void SEND_SCAN_REQUEST(){
+	char C;
 	//Encendemos el motor
 	setMotorDutyCycle(60);
-	//Enviamos el comando por uart
+	//Limpiamos el buffer de Recepción
 	UART1buf_flushRx();
+	//Enviamos el comando por uart
 	UART1buf_putn(SCAN_REQUEST,2);
-	//Comenzamos a recibir los valores y lo escribimos en el buffer principal.
-	for(unsigned int i=0;i<1600*5+7;i++){
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			while(1);
+		}
+	}
+	//Esperamos a que sea un nuevo Scan con la bandera S
+	//y que la data sea correcta con los check bits
+	while(1){
+		while(UART1buf_peek()<0);
+		/****Decodificamos la bandera Flag****/
+		if ((UART1buf_peek()&0x03)==(0x01)){
+			MainBuf[0]=UART1buf_getc();
+			/****Decodificamos el checkbit****/
+			while(UART1buf_peek()<0);
+			C=UART1buf_peek()&0x01;
+			MainBuf[1]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[2]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[3]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[4]=UART1buf_getc();
+			if(C){
+				break;
+			}
+		}else{
+			for (int i=0;i<4;i++){
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+			}
+			UART1buf_getc();
+		}
+	}
+	//Escribimos en el buffer principal.
+	for(unsigned int i=5;i<1600*5;i++){
 		while(UART1buf_peek()<0);
 		MainBuf[i]=UART1buf_getc();
 	}
@@ -332,59 +370,10 @@ void SEND_SCAN_REQUEST(){
 	UART1buf_putn(STOP_REQUEST, 2);
 	setMotorDutyCycle(0);
 	UART1buf_flushRx();
-	//while(1);//analizamos si el comando STOP funciona.
-	//Comparamos con lo que se debe recibir y si es correcto
-	for (int i=0;i<7;i++){
-		if (SCAN_DESCRIPTOR[i]!=MainBuf[i]){
-			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
-			printf_pkt(MainBuf,7);
-			while(1);
-		}
-	}
-	//Decodificamos los valores escaneados
+	//Enviamos los valores escaneados
 	for(int i=0;i<1600;i++){
-		printf_pkt(&MainBuf[5*i+7],5);
-		printf_data(&MainBuf[5*i+7]);
-	}
-}
-
-
-void SEND_SCAN_REQUEST_ov(){
-	//Encendemos el motor
-	setMotorDutyCycle(50);
-	//Esperamos que se estabilice
-	HAL_Delay(900);
-	//definimos el arreglo que contendrá los datos
-	uint8_t data[7];
-	//Enviamos el comando por uart
-	UART1buf_putn(SCAN_REQUEST,2);
-	//Comenzamos a recibir los valores. Y comparamos con lo que se debe recibir
-	uint8_t count=0;
-	for (int i=0;i<7;i++){
-		//Debemos esperar a que el buffer no este vacío
-		while(UART1buf_peek()<0);
-		data[i]=UART1buf_getc();
-		if (SCAN_DESCRIPTOR[i]!=data[i]) break;
-		count++;
-	}
-	//verificamos si la data llego correctamente
-	if (count!=7){
-		//Hubo ERROR de transferencia.
-		//Imprimimos data enviandolo por el LPUART
-		LPUART1buf_puts((char*)"Error\n\r");
-		printf_pkt(SCAN_DESCRIPTOR,count);
-		printf_pkt(data,count);
-		while(1);
-	}
-	//Continuamos recibiendo obteniendo datos de 5 del buffer y lo imprimimos en pantalla
-	while(1){
-		for (int i=0;i<5;i++){
-			//Debemos esperar a que el buffer no este vacío
-			while(UART1buf_peek()<0);
-			data[i]=UART1buf_getc();
-		}
-		printf_pkt(data,5);
-		printf_data(data);
+		printf_pkt(&MainBuf[5*i],5);
+		printf_data(&MainBuf[5*i]);
 	}
 }
 
