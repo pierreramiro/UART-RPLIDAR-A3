@@ -1,4 +1,4 @@
-fclose(instrfindall)
+%fclose(instrfindall)
 clc;clear
 s=serialport('/dev/ttyACM0',115200);
 values = [];
@@ -9,5 +9,6 @@ while true
         values = [values;data];
     end
 end
-%% Solo si se desea guardar datos, usar lo siguiente
-%save("values_at_60","values");
+%%
+save("values_at_60_v3","values");
+%save("longvalues_at_60_long","values");
