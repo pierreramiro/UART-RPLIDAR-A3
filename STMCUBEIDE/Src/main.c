@@ -362,7 +362,7 @@ void SEND_SCAN_REQUEST(){
 		}
 	}
 	//Escribimos en el buffer principal.
-	for(unsigned int i=5;i<1600*5;i++){
+	for(unsigned int i=5;i<1800*5;i++){
 		while(UART1buf_peek()<0);
 		MainBuf[i]=UART1buf_getc();
 	}
@@ -371,7 +371,7 @@ void SEND_SCAN_REQUEST(){
 	setMotorDutyCycle(0);
 	UART1buf_flushRx();
 	//Enviamos los valores escaneados
-	for(int i=0;i<1600;i++){
+	for(int i=0;i<1800;i++){
 		printf_pkt(&MainBuf[5*i],5);
 		printf_data(&MainBuf[5*i]);
 	}
