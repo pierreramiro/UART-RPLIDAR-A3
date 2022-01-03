@@ -49,6 +49,7 @@
 /*Tamaños del buffer*/
 #define  RxBuf_SIZE 		10
 #define  MainBuf_SIZE 		(2<<14)//13->8192 14->16384 16->65536
+#define precision 6  //precision for decimal digits
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -85,7 +86,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == GPIO_PIN_13)
@@ -131,7 +131,6 @@ int intToStr(int x, char str[], int d)
     str[i] = '\0';
     return i;
 }
-
 // Converts a floating-point/double number to a string.
 void ftoa(float n, char* res, int beforepoint,int afterpoint)
 {
@@ -156,7 +155,51 @@ void ftoa(float n, char* res, int beforepoint,int afterpoint)
         intToStr((int)fpart, res + i + 1, afterpoint);
     }
 }
-
+void float_to_char(float f, char *p) {
+	int a,b,c,k,l=0,m,i=0;
+	// check for negetive float
+	if(f<0.0)
+	{
+		p[i++]='-';
+		f*=-1;
+	}
+	a=f;	// extracting whole number
+	f-=a;	// extracting decimal part
+	k = precision;
+	// number of digits in whole number
+	while(k>-1)
+	{
+		l = pow(10,k);
+		m = a/l;
+		if(m>0)
+		{
+			break;
+		}
+	k--;
+	}
+	// number of digits in whole number are k+1
+	/*
+	extracting most significant digit i.e. right most digit , and concatenating to string
+	obtained as quotient by dividing number by 10^k where k = (number of digit -1)
+	*/
+	for(l=k+1;l>0;l--)
+	{
+		b = pow(10,l-1);
+		c = a/b;
+		p[i++]=c+48;
+		a%=b;
+	}
+	p[i++] = '.';
+	/* extracting decimal digits till precision */
+	for(l=0;l<precision;l++)
+	{
+		f*=10.0;
+		b = f;
+		p[i++]=b+48;
+		f-=b;
+	}
+	p[i]='\0';
+}
 void printf_pkt(uint8_t * cmd, uint8_t size){
 	char  ascii_chars[size*3];
 	for (int i=0;i<size;i++){
@@ -168,8 +211,48 @@ void printf_pkt(uint8_t * cmd, uint8_t size){
 	LPUART1buf_puts(ascii_chars);
 	LPUART1buf_puts((char *) "\n\r");
 }
-void printf_data(uint8_t* pkt){
-	char S,notS,C,quality;
+void printf_cartesian_data(uint8_t* pkt){
+	char S,notS,C;
+	//chat quality;
+	uint16_t temp;
+	float angle,distance,x,y;
+	char ascii_chars[30];
+	/****Decodificamos el checkbit****/
+	C=pkt[1]&0x01;
+	/****Decodificamos la bandera Flag****/
+	S=pkt[0]&0x01;
+	notS=(pkt[0]>>1)&0x01;
+	if ((S^notS)&&(C)){
+		/****Decodificamos el Angle****/
+		//Desplazamos los bits
+		temp=(pkt[1]>>1)&0x7F;
+		temp|=(pkt[2]<<7);
+		angle=(float)temp/64.0;
+		angle=angle*M_PI/180.0;
+		/****Decodificamos la distancia****/
+		//Desplazamos los bits
+		temp=pkt[3];
+		temp|=(pkt[4]<<8);
+		distance=(float)temp/4.0;
+		//Procedemos a convertir en coordenadas cartesianas
+		x=distance*cosf(angle+M_PI_2);
+		y=distance*sinf(angle+M_PI_2);
+		//Procedemos a enviarlo por el puerto serial
+		LPUART1buf_puts((char*)"[");
+		float_to_char(x,ascii_chars);
+		LPUART1buf_puts(ascii_chars);
+		LPUART1buf_puts((char*)",");
+		float_to_char(y,ascii_chars);
+		LPUART1buf_puts(ascii_chars);
+	}else{
+		LPUART1buf_puts((char*)"[Inf,Inf");
+	}
+	//Imprimos una nueva línea
+	LPUART1buf_puts((char*)"]\n\r");
+}
+void printf_polar_data(uint8_t* pkt){
+	char S,notS,C;
+	//chat quality;
 	uint16_t angle,distance;
 	float result;
 	char ascii_chars[30];
@@ -203,6 +286,7 @@ void printf_data(uint8_t* pkt){
 	//Imprimos una nueva línea
 	LPUART1buf_puts((char*)"]\n\r");
 }
+
 void printf_data_old_version(uint8_t* pkt){
 	char S,notS,C,quality;
 	uint16_t angle,distance;
@@ -262,7 +346,7 @@ void setMotorDutyCycle(float duty){
 
 	}
 }
-void getRPM(float duty){
+void getRPM(float duty){//Revisar, presenta errores de detección y de transmisión al COM
 	//Definimos las variables
 	uint8_t byte,S,notS,C;
 	uint32_t tiempo=0;
@@ -333,7 +417,6 @@ void SEND_RESET_REQUEST(){
 	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
-
 void SEND_SCAN_REQUEST(){
 	char C;
 	//Encendemos el motor
@@ -395,12 +478,11 @@ void SEND_SCAN_REQUEST(){
 	//Enviamos los valores escaneados
 	for(int i=0;i<1800;i++){
 		//Enviamos la data cruda en Hexadecimal
-		printf_pkt(&MainBuf[5*i],5);
+		//printf_pkt(&MainBuf[5*i],5);
 		//Enviamos la data procesada: [angle,distance]
-		printf_data(&MainBuf[5*i]);
+		printf_cartesian_data(&MainBuf[5*i]);
 	}
 }
-
 void SEND_EXPRESS_SCAN_REQUEST(){//Por desarrollar
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,EXPRESS_SCAN_RPL};
@@ -421,7 +503,6 @@ void SEND_FORCE_SCAN_REQUEST(){//Por desarrollar
 	//Delay >2ms para poder enviar otro request
 	HAL_Delay(2);
 }
-
 void SEND_GET_INFO_REQUEST(){
 	uint8_t model,firmware_minor,firmware_major,hardware;
 	uint64_t serial_number_lsbytes=0,serial_number_msbytes=0;//dividimos en dos variables de 8bytes
@@ -492,9 +573,7 @@ void SEND_GET_HEALTH_REQUEST(){
 	//Analizar que hacer con dichos valores
 
 	//return status;
-
 }
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -537,7 +616,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   LPUART1buf_init(115200,SERIAL_8N1,0);
   UART1buf_init(256000,SERIAL_8N1,0);
-  //SEND_RESET_REQUEST();
+  SEND_RESET_REQUEST();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -553,7 +632,6 @@ int main(void)
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
 	  SEND_SCAN_REQUEST();
-	  //getRPM(50);
 
 	  //while (UserButtonStatus == 0);
 
