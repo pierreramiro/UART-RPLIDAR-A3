@@ -73,6 +73,10 @@ const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
 const uint8_t SCAN_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x05,0x00,0x00,0x40,0x81};
+const uint8_t GET_HEALTH_REQUEST[2]={START_FLAG_1,GET_HEALTH_RPL};
+const uint8_t GET_HEALTH_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x03,0x00,0x00,0x00,0x06};
+const uint8_t GET_INFO_REQUEST[2]={START_FLAG_1,GET_INFO_RPL};
+const uint8_t GET_INFO_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x4,0x00,0x00,0x00,0x04};
 
 /* USER CODE END PV */
 
@@ -82,26 +86,6 @@ static void MX_GPIO_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *UartHandle){
-  /* Set transmission flag: transfer complete */
-  UartReady = SET;
-}
-void HAL_UARTEx_RxEventCallback(UART_HandleTypeDef *huart, uint16_t Size){
-	if (huart->Instance==USART1){
-		//memcpy (MainBuf,RxBuf,Size);
-		//HAL_UARTEx_ReceiveToIdle_DMA(&huart1,RxBuf,Size)
-	}
-}
-
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *UartHandle){
-  /* Set transmission flag: transfer complete */
-  UartReady = SET;
-}
-
-void HAL_UART_ErrorCallback(UART_HandleTypeDef *UartHandle){
-  Error_Handler();
-}
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
   if (GPIO_Pin == GPIO_PIN_13)
@@ -184,8 +168,42 @@ void printf_pkt(uint8_t * cmd, uint8_t size){
 	LPUART1buf_puts(ascii_chars);
 	LPUART1buf_puts((char *) "\n\r");
 }
-
 void printf_data(uint8_t* pkt){
+	char S,notS,C,quality;
+	uint16_t angle,distance;
+	float result;
+	char ascii_chars[30];
+	/****Decodificamos el checkbit****/
+	C=pkt[1]&0x01;
+	/****Decodificamos la bandera Flag****/
+	S=pkt[0]&0x01;
+	notS=(pkt[0]>>1)&0x01;
+	if ((S^notS)&&(C)){
+		/****Decodificamos el Angle****/
+		LPUART1buf_puts((char*)"[");
+		//Desplazamos los bits
+		angle=(pkt[1]>>1)&0x7F;
+		angle|=(pkt[2]<<7);
+		//Procedemos a convertir el halfword en ascii
+		result=(float)angle/64.0;
+		ftoa(result,ascii_chars,3,3);
+		LPUART1buf_puts(ascii_chars);
+		/****Decodificamos la distancia****/
+		LPUART1buf_puts((char*)",");
+		//Desplazamos los bits
+		distance=pkt[3];
+		distance|=(pkt[4]<<8);
+		//Procedemos a convertir la distancia
+		result=(float)distance/4.0;
+		ftoa(result,ascii_chars,5,3);
+		LPUART1buf_puts(ascii_chars);
+	}else{
+		LPUART1buf_puts((char*)"[Inf,Inf");
+	}
+	//Imprimos una nueva línea
+	LPUART1buf_puts((char*)"]\n\r");
+}
+void printf_data_old_version(uint8_t* pkt){
 	char S,notS,C,quality;
 	uint16_t angle,distance;
 	float result;
@@ -212,8 +230,8 @@ void printf_data(uint8_t* pkt){
 		/****Decodificamos el Angle****/
 		LPUART1buf_puts((char*)"\tAngle: ");
 		//Desplazamos los bits
-		angle=(pkt[2]>>1)&0x7F;
-		angle|=(pkt[3]<<7);
+		angle=(pkt[1]>>1)&0x7F;
+		angle|=(pkt[2]<<7);
 		//Procedemos a convertir el halfword en ascii
 		result=(float)angle/64.0;
 		ftoa(result,ascii_chars,3,3);
@@ -221,7 +239,7 @@ void printf_data(uint8_t* pkt){
 		/****Decodificamos la distancia****/
 		LPUART1buf_puts((char*)"\tDistance: ");
 		//Desplazamos los bits
-		distance=pkt[4];
+		distance=pkt[3];
 		distance|=(pkt[4]<<8);
 		//Procedemos a convertir la distancia
 		result=(float)distance/4.0;
@@ -308,12 +326,11 @@ void SEND_STOP_REQUEST(){
 void SEND_RESET_REQUEST(){
 	//Enviamos el comando por uart
 	UART1buf_putn(RESET_REQUEST,2);
-	//Delay >2ms para poder enviar otro request
-	HAL_Delay(2);
 	//Esperamos a recibir la data basura
 	while(UART1buf_peek()<0);
-	//Esperamos a leer/flush la data basura
-	while(UART1buf_getc()>0);
+	//Delay >20ms para poder recibir toda la data basura
+	HAL_Delay(50);
+	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
 
@@ -330,11 +347,15 @@ void SEND_SCAN_REQUEST(){
 		while(UART1buf_peek()<0);
 		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
 			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
 			while(1);
 		}
 	}
 	//Esperamos a que sea un nuevo Scan con la bandera S
 	//y que la data sea correcta con los check bits
+	//esto con el fin de poder obtener como el primer indice el primer Scan
 	while(1){
 		while(UART1buf_peek()<0);
 		/****Decodificamos la bandera Flag****/
@@ -369,15 +390,18 @@ void SEND_SCAN_REQUEST(){
 	//Detenemos la trama del SCAN
 	UART1buf_putn(STOP_REQUEST, 2);
 	setMotorDutyCycle(0);
+	HAL_Delay(2);
 	UART1buf_flushRx();
 	//Enviamos los valores escaneados
 	for(int i=0;i<1800;i++){
+		//Enviamos la data cruda en Hexadecimal
 		printf_pkt(&MainBuf[5*i],5);
+		//Enviamos la data procesada: [angle,distance]
 		printf_data(&MainBuf[5*i]);
 	}
 }
 
-void SEND_EXPRESS_SCAN_REQUEST(){
+void SEND_EXPRESS_SCAN_REQUEST(){//Por desarrollar
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,EXPRESS_SCAN_RPL};
 	//Enviamos el comando por uart
@@ -387,7 +411,7 @@ void SEND_EXPRESS_SCAN_REQUEST(){
 	//Delay >2ms para poder enviar otro request
 	HAL_Delay(2);
 }
-void SEND_FORCE_SCAN_REQUEST(){
+void SEND_FORCE_SCAN_REQUEST(){//Por desarrollar
 	//Definimos el comando
 	uint8_t cmd[2]={START_FLAG_1,FORCE_SCAN_RPL};
 	//Enviamos el comando por uart
@@ -397,113 +421,80 @@ void SEND_FORCE_SCAN_REQUEST(){
 	//Delay >2ms para poder enviar otro request
 	HAL_Delay(2);
 }
+
 void SEND_GET_INFO_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,GET_INFO_RPL};
+	uint8_t model,firmware_minor,firmware_major,hardware;
+	uint64_t serial_number_lsbytes=0,serial_number_msbytes=0;//dividimos en dos variables de 8bytes
+	//Limpiamos el buffer de Recepción
+	UART1buf_flushRx();
 	//Enviamos el comando por uart
-	if (HAL_UART_Transmit(&huart1,cmd,2,3) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
+	UART1buf_putn(GET_INFO_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (GET_HEALTH_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-14-00-00-04\n\r");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
 	}
-	//Delay >2ms para poder enviar otro request
-	HAL_Delay(2);
+	//Obtenemos las variables del response
+	while(UART1buf_peek()<0);
+	model=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	firmware_minor=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	firmware_major=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	hardware=UART1buf_getc();
+	//Los primeros 8bytes del serial number
+	for (int i=0;i<8;i++){
+		while(UART1buf_peek()<0);
+		serial_number_lsbytes|=(UART1buf_getc()<<8*i);
+	}
+	//Los 8bytes mas significativos del serial number
+	for (int i=0;i<8;i++){
+			while(UART1buf_peek()<0);
+			serial_number_msbytes|=(UART1buf_getc()<<8*i);
+		}
+	//Analizar que hacer con dichos valores
+
+	//return status;
+
 }
 void SEND_GET_HEALTH_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,GET_HEALTH_RPL};
-	//Definimos el "response descriptor" a recibir
-	uint8_t resp_des[7]={START_FLAG_1,START_FLAG_2,0x03,0x00,0x00,0x00,0x06};
-	//Definimos el buffer de recepción
-	uint8_t rx_buffer[10];
+	uint8_t status;
+	uint16_t error_code;
+	//Limpiamos el buffer de Recepción
+	UART1buf_flushRx();
 	//Enviamos el comando por uart
-	if (HAL_UART_Transmit_IT(&huart1,cmd,2) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	while (UartReady != SET);
-	//Reseteamos la bandera
-	UartReady = RESET;
-	//Verificamos correcta transacción
-	HAL_UART_Receive(&huart1,rx_buffer,10,3);//(uart handle,tx pointer,size, timeout)
-	int count=0;
+	UART1buf_putn(GET_HEALTH_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
-		if (rx_buffer[i]!=resp_des[i]) break;
-		count++;
+		while(UART1buf_peek()<0);
+		if (GET_HEALTH_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-00-06\n\r");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
 	}
-	//Imprimimos data enviandolo por el UART del COM7 de la compu
-	if (count==7){
-		uint8_t text[]="No error\n\r";
-		HAL_UART_Transmit(&hlpuart1, text, 10, 300);
-		//HAL_UART_Receive(&huart1,rx_buffer,3,3);//(uart handle,tx pointer,size, timeout)
-		printf_pkt(rx_buffer,10);
-	}else{
-		uint8_t text[]="Error\n\r";
-		HAL_UART_Transmit(&hlpuart1, text, 7, 300);
-		printf_pkt(resp_des,7);
-		//printf_pkt(rx_buffer,7);
-		//HAL_UART_Receive(&huart1,rx_buffer,3,3);//(uart handle,tx pointer,size, timeout)
-		printf_pkt(rx_buffer,10);
-	}
-}
-void SEND_GET_SAMPLERATE_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,GET_SAMPLERATE_RPL};
-	//Definimos el "response descriptor" a recibir
-	uint8_t resp_des[7]={START_FLAG_1,START_FLAG_2,0x04,0x00,0x00,0x00,0x15};
-	//Definimos el tamaño del buffer de recepción
-	uint8_t rx_size=11;
-	//Definimos el buffer de recepción
-	uint8_t rx_buffer[rx_size];
-	//Enviamos el comando por uart
-	if (HAL_UART_Transmit(&huart1,cmd,2,3) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Esperamos que se envie todo
-	while (UartReady != SET);
-	//Reseteamos la bandera
-	UartReady = RESET;
-	//Comenzamos la recepción
-	if (HAL_UART_Receive_IT(&huart1,rx_buffer,rx_size) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Esperamos a completar la recepción
-	while (UartReady != SET);
-	UartReady = RESET;
-	//Comparamos con la data que deberia recibirse
-	int count=0;
-	for (int i=0;i<7;i++){
-		if (rx_buffer[i]!=resp_des[i]) break;
-		count++;
-	}
-	//Imprimimos data enviandolo por el UART del COM7 de la compu
-	if (count==7){
-		uint8_t text[]="No error\n\r";
-		HAL_UART_Transmit(&hlpuart1, text, 10, 300);
-		printf_pkt(rx_buffer,rx_size);
-	}else{
-		uint8_t text[]="Orror\n\r";
-		HAL_UART_Transmit(&hlpuart1, text, 7, 300);
-		printf_pkt(resp_des,7);
-		printf_pkt(rx_buffer,rx_size);
-	}
-}
-void SEND_GET_LIDAR_CONF_REQUEST(){
-	//Definimos el comando
-	uint8_t cmd[2]={START_FLAG_1,GET_LIDAR_CONF_RPL};
-	//Enviamos el comando por uart
-	if (HAL_UART_Transmit_IT(&huart1,cmd,2) != HAL_OK){//(uart handle,tx pointer,size, timeout)
-		Error_Handler();
-	}
-	//Esperamos que se envie todo
-	while (UartReady != SET);
-	//Reseteamos la bandera
-	UartReady = RESET;
-	//Delay >2ms para poder enviar otro request
-	HAL_Delay(5);
+	//Obtenemos el status y el error code
+	while(UART1buf_peek()<0);
+	status=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	error_code=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	error_code|=(UART1buf_getc()<<8);
+	//Analizar que hacer con dichos valores
+
+	//return status;
+
 }
 
-void test_func(){
-	uint8_t cmd[2]={START_FLAG_1,GET_LIDAR_CONF_RPL};
-	printf_pkt(cmd,2);
-}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -564,39 +555,8 @@ int main(void)
 	  SEND_SCAN_REQUEST();
 	  //getRPM(50);
 
-  	  //SEND_GET_HEALTH_REQUEST();
-	  /*Verificamos si estamos en Protection STOP*/
-
-	  /*Reseteamos en caso sea necesario*/
-
-	  //go to get_health_request
-	  /*Habilitamos el motos*/
-	  //setMotorDutyCycle(50);
-	  //HAL_Delay(500);
-	  /*Enviamos el comando SCAN*/
-	  //SEND_SCAN_REQUEST();
-
-	  /*
-	  uint8_t text[]="Comienza trama\n\r";
-	  HAL_UART_Transmit(&hlpuart1, text, 16, 300);
-	  //SEND_GET_SAMPLERATE_REQUEST();
-	  //SEND_RESET_REQUEST();
-	  SEND_GET_HEALTH_REQUEST();
-	  SEND_SCAN_REQUEST();
 	  //while (UserButtonStatus == 0);
-	  setMotorDutyCycle(50);
-	  //HAL_Delay(3000);
-	  SEND_SCAN_REQUEST();
-	  setMotorDutyCycle(50);
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_SET);
-  	  HAL_Delay(6000);
-  	  SEND_GET_HEALTH_REQUEST();//ocurre error
-  	  //SEND_STOP_REQUEST();
-  	  setMotorDutyCycle(50);
-	  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_5, GPIO_PIN_RESET);
-  	  HAL_Delay(6000);
-  	  SEND_GET_HEALTH_REQUEST();
-  	  */
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
