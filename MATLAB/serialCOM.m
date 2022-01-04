@@ -10,5 +10,5 @@ while true
     end
 end
 %%
-save("valid_data_2","values");
+save("rplidar_cartesian_data_1","values");
 %save("longvalues_at_60_long","values");
