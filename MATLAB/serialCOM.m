@@ -1,6 +1,7 @@
 %fclose(instrfindall)
 clc;clear
-s=serialport('/dev/ttyACM0',115200);
+%s=serialport('/dev/ttyACM0',115200);%For Linux
+s=serialport('COM7',115200);%For Windows
 values = [];
 while true
     if s.NumBytesAvailable > 0
