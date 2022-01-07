@@ -7,9 +7,9 @@ while true
     if s.NumBytesAvailable > 0
         data = readline(s);
         fprintf(data)
-        values = [values;data];
+        values = [values;data]; 
     end
 end
 %%
-save("rplidar_cartesian_data_3","values");
+save("rplidar_cartesian_data_4","values");
 %save("longvalues_at_60_long","values");

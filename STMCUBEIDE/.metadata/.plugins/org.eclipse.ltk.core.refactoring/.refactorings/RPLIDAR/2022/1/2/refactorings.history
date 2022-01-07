@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;RPLIDAR/Core/Src/fat_sd.c&apos; to &apos;fatfs_sd.c&apos;" description="Rename resource &apos;fat_sd.c&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="Core/Src/fat_sd.c" name="fatfs_sd.c" stamp="1641421391172" updateReferences="true"/>
+</session>

@@ -24,6 +24,8 @@
 /* USER CODE BEGIN Includes */
 #include "math.h"
 #include "uart_buf_g4.h"
+#include "fatfs_sd.h"
+#include "string.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -47,7 +49,6 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  RxBuf_SIZE 		10
 #define  MainBuf_SIZE 		(2<<14)//13->8192 14->16384 16->65536
 #define precision 6  //precision for decimal digits
 /* USER CODE END PD */
@@ -66,7 +67,6 @@ TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
 __IO ITStatus UserButtonStatus = 0;  /* set to 1 after User Button interrupt  */
-uint8_t RxBuf[RxBuf_SIZE];
 uint8_t MainBuf[MainBuf_SIZE];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
@@ -80,6 +80,31 @@ const uint8_t EXPRESS_SCAN_REQUEST[7]={START_FLAG_1,EXPRESS_SCAN_RPL};
 
 const uint8_t FORCE_SCAN_REQUEST[7]={START_FLAG_1,FORCE_SCAN_RPL};
 
+/*Variables involucradas para la SD*/
+FATFS fs;  // file system
+FIL fil; // File
+FILINFO fno;
+FRESULT fresult;  // result
+UINT br, bw;  // File read/write count
+
+/**** capacity related *****/
+FATFS *pfs;
+DWORD fre_clust;
+uint32_t total, free_space;
+
+#define BUFFER_SIZE 128
+char buffer[BUFFER_SIZE];  // to store strings..
+int bufsize (char *buf)
+{
+	int i=0;
+	while (*buf++ != '\0') i++;
+	return i;
+}
+
+void clear_buffer (void)
+{
+	for (int i=0; i<BUFFER_SIZE; i++) buffer[i] = '\0';
+}
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -342,8 +367,8 @@ void setMotorDutyCycle(float duty){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_Delay(3);
 	if (duty!=0){
-		//El ARR tiene como valor máximo 6799
-		TIM1->CCR2 = duty*68;
+		//El ARR tiene como valor máximo 5760@144Mhz
+		TIM1->CCR2 = (uint32_t)duty*57.6;
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 		HAL_Delay(3);
 
@@ -358,7 +383,7 @@ void getRPM(float duty){//Revisar, presenta errores de detección y de transmisi
 	//Detenemos el motor y establecemos el dutycycle
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
 	HAL_Delay(3);
-	TIM1->CCR2 = (uint32_t)(duty*68);//El ARR tiene como valor máximo 6799
+	TIM1->CCR2 = (uint32_t)(duty*57.6);//El ARR tiene como valor máximo 5760@144Mhz
 	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
 	//Enviamos el comando por uart
 	UART1buf_flushRx();
@@ -611,9 +636,39 @@ int main(void)
     Error_Handler();
   }
   /* USER CODE BEGIN 2 */
+  //Inicializamos los UARTs
   LPUART1buf_init(115200,SERIAL_8N1,0);
   UART1buf_init(256000,SERIAL_8N1,0);
+
+  //Inicializamos la SD
+  HAL_Delay (500);
+   	while (f_mount(&fs,"/", 1) != FR_OK);
+   	LPUART1buf_puts("SD CARD mounted successfully...\n\r");
+   	/*************** Card capacity details ********************/
+   	/* Check free space */
+   	while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
+   	total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
+   	sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
+   	LPUART1buf_puts(buffer);
+   	clear_buffer();
+   	free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
+   	sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
+   	LPUART1buf_puts(buffer);
+   	clear_buffer();
+   	/**************** The following operation is using f_write and f_read **************************/
+   	/* Create second file with read write access and open it */
+   	while(f_open(&fil, "file.txt", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+   	/* Writing text */
+   	strcpy (buffer, "DATA\n\r");
+   	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
+   	LPUART1buf_puts ((char*)"File.txt created and data is written\n\r");
+   	/* Close file */
+   	//f_close(&fil);
+   	/**************************************************************************/
+
+  //Enviamos el comando de RESET
   SEND_RESET_REQUEST();
+  int conteo=0;
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -623,13 +678,33 @@ int main(void)
 	  //HAL_UART_Receive(&huart1, eraser_reg,70 , 4);
 	  //Esperamos a que se presione el Boton
 	  LPUART1buf_puts((char*)"Comando linea:\n\r");
+	/*********************UPDATING an existing file ***************************/
+	/* Open the file with write access */
+	//fresult = f_open(&fil, "file.txt", FA_OPEN_EXISTING | FA_READ | FA_WRITE);
+	/* Move to offset to the end of the file */
+	//while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+	LPUART1buf_puts ("About to update the file.txt\n\r");
+	/* write the string to the file */
+	f_puts("\nBUTTON PRESSED\n\r", &fil);
+	/*//Unmount SDCARD
+	fresult = f_mount(NULL, "/", 1);
+	if (fresult == FR_OK) LPUART1buf_puts ((char*)"SD CARD UNMOUNTED successfully...\n\r");*/
+	/**************************************************************************/
 	  //HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
 	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  //Esperamos que se suelte
 	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	  /*Enviamos el comando GET_HEALTH*/
-	  SEND_SCAN_REQUEST();
-
+	  //SEND_SCAN_REQUEST();
+	  conteo++;
+	  if (conteo==4)
+	  {/* Close file */
+		  conteo=0;
+		  f_close(&fil);
+		  /* Unmount SDCARD */
+		  while(f_mount(NULL, "/", 1)!= FR_OK);
+		  LPUART1buf_puts ("SD CARD UNMOUNTED successfully Retira...\n\r");
+	  }
 	  //while (UserButtonStatus == 0);
 
     /* USER CODE END WHILE */
@@ -650,7 +725,7 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
+  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -659,8 +734,8 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV4;
-  RCC_OscInitStruct.PLL.PLLN = 85;
+  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+  RCC_OscInitStruct.PLL.PLLN = 18;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
@@ -753,7 +828,7 @@ static void MX_SPI2_Init(void)
   hspi2.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi2.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi2.Init.NSS = SPI_NSS_SOFT;
-  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi2.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi2.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi2.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi2.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -793,7 +868,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 6799;
+  htim1.Init.Period = 5759;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -914,6 +989,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
+	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_5);
   }
   /* USER CODE END Error_Handler_Debug */
 }
