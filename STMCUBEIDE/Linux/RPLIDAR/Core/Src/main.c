@@ -50,7 +50,7 @@
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
 #define  MainBuf_SIZE 		(2<<14)//13->8192 14->16384 16->65536
-#define precision 6  //precision for decimal digits
+#define precision 3  //precision for decimal digits
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -445,6 +445,111 @@ void SEND_RESET_REQUEST(){
 	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
+void SAVE_SCAN_DATA(){
+	//Define variables
+	uint16_t temp;
+	float angle,distance,x,y;
+	char ascii_chars[30];
+	char C;
+	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
+
+	//Ahora lo creamos
+	while(f_open(&fil, "final.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+	//Escribimos la primera línea
+	strcpy (buffer, "Data a almacenar [x,y]:\n");
+	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
+	//Cerramos el archivo para evitar problemas de datos perdidos en el read/write
+	f_close(&fil);
+	//Ahora encendemos el motor
+	setMotorDutyCycle(60);
+	//Limpiamos el buffer de Recepción
+	UART1buf_flushRx();
+	//Enviamos el comando por uart
+	UART1buf_putn(SCAN_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	//Procedemos a recibir la data del RPLIDAR y decodificarla
+	while(1){
+		while(UART1buf_peek()<0);
+		/****Decodificamos la bandera Flag****/
+		if (((UART1buf_peek()&0x03)==(0x01))||((UART1buf_peek()&0x03)==(0x02))){
+			MainBuf[0]=UART1buf_getc();
+			/****Decodificamos el checkbit****/
+			while(UART1buf_peek()<0);
+			C=UART1buf_peek()&0x01;
+			MainBuf[1]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[2]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[3]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[4]=UART1buf_getc();
+			if(C){
+				//Decodificamos la data correcta
+				/****Decodificamos el Angle****/
+				//Desplazamos los bits
+				temp=(MainBuf[1]>>1)&0x7F;
+				temp|=(MainBuf[2]<<7);
+				angle=(float)temp/64.0;
+				angle=angle*M_PI/180.0;
+				/****Decodificamos la distancia****/
+				//Desplazamos los bits
+				temp=MainBuf[3];
+				temp|=(MainBuf[4]<<8);
+				distance=(float)temp/4.0;
+				//Procedemos a convertir en coordenadas cartesianas
+				x=distance*cosf(angle+M_PI_2);
+				y=distance*sinf(angle+M_PI_2);
+				//Procedemos a guardar la data en la SD
+				while(f_open(&fil, "final.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+				//f_puts("[", &fil);
+				float_to_char(x,ascii_chars);
+				f_puts(ascii_chars, &fil);
+				f_puts(",", &fil);
+				float_to_char(y,ascii_chars);
+				f_puts(ascii_chars, &fil);
+				f_puts("\n", &fil);
+				f_close(&fil);
+			}
+		}else{
+			//Tenemos data errónea
+			for (int i=0;i<4;i++){
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+			}
+			UART1buf_getc();
+			f_puts("Inf,Inf\n", &fil);
+		}
+		//Verificar si se había presionado el boton
+		if (UserButtonStatus){
+			//Salir del while
+			UserButtonStatus=0;
+			break;
+		}
+	}
+	/* Unmount SDCARD */
+	while(f_mount(NULL, "/", 1)!= FR_OK);
+	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+	//Mandamos el comando de STOP
+	UART1buf_putn(STOP_REQUEST, 2);
+	//Detenemos el motor
+	setMotorDutyCycle(0);
+	HAL_Delay(2);
+	//Borramos data del buffer
+	UART1buf_flushRx();
+	//Enviamos "fin de SAVE_SCAN_DATA"
+	LPUART1buf_puts ("Fin de la operación\n\r");
+}
 void SEND_SCAN_REQUEST(){
 	char C;
 	//Encendemos el motor
@@ -639,73 +744,37 @@ int main(void)
   //Inicializamos los UARTs
   LPUART1buf_init(115200,SERIAL_8N1,0);
   UART1buf_init(256000,SERIAL_8N1,0);
-
-  //Inicializamos la SD
+  //Mount SD card
   HAL_Delay (500);
-   	while (f_mount(&fs,"/", 1) != FR_OK);
-   	LPUART1buf_puts("SD CARD mounted successfully...\n\r");
-   	/*************** Card capacity details ********************/
-   	/* Check free space */
-   	while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
-   	total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
-   	sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
-   	LPUART1buf_puts(buffer);
-   	clear_buffer();
-   	free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
-   	sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
-   	LPUART1buf_puts(buffer);
-   	clear_buffer();
-   	/**************** The following operation is using f_write and f_read **************************/
-   	/* Create second file with read write access and open it */
-   	while(f_open(&fil, "file.txt", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
-   	/* Writing text */
-   	strcpy (buffer, "DATA\n\r");
-   	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
-   	LPUART1buf_puts ((char*)"File.txt created and data is written\n\r");
-   	/* Close file */
-   	//f_close(&fil);
-   	/**************************************************************************/
-
+  while (f_mount(&fs,"/", 1) != FR_OK);
+  LPUART1buf_puts("SD CARD mounted successfully...\n\r");
+  /*************** Card capacity details ********************/
+  /* Check free space */
+  while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
+  total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
+  sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
+  LPUART1buf_puts(buffer);
+  clear_buffer();
+  free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
+  sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
+  LPUART1buf_puts(buffer);
+  clear_buffer();
   //Enviamos el comando de RESET
-  SEND_RESET_REQUEST();
-  int conteo=0;
+  SEND_RESET_REQUEST();//DESCOMENTAR LUEGO DE TEMRINAR CON EL SD
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  //HAL_UART_Receive(&huart1, eraser_reg,70 , 4);
-	  //Esperamos a que se presione el Boton
-	  LPUART1buf_puts((char*)"Comando linea:\n\r");
-	/*********************UPDATING an existing file ***************************/
-	/* Open the file with write access */
-	//fresult = f_open(&fil, "file.txt", FA_OPEN_EXISTING | FA_READ | FA_WRITE);
-	/* Move to offset to the end of the file */
-	//while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-	LPUART1buf_puts ("About to update the file.txt\n\r");
-	/* write the string to the file */
-	f_puts("\nBUTTON PRESSED\n\r", &fil);
-	/*//Unmount SDCARD
-	fresult = f_mount(NULL, "/", 1);
-	if (fresult == FR_OK) LPUART1buf_puts ((char*)"SD CARD UNMOUNTED successfully...\n\r");*/
-	/**************************************************************************/
-	  //HAL_UART_Transmit(&hlpuart1, (uint8_t*)"Comando linea:\n\r", 16, 300);
-	  while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  //Esperamos que se suelte
-	  while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
-	  /*Enviamos el comando GET_HEALTH*/
-	  //SEND_SCAN_REQUEST();
-	  conteo++;
-	  if (conteo==4)
-	  {/* Close file */
-		  conteo=0;
-		  f_close(&fil);
-		  /* Unmount SDCARD */
-		  while(f_mount(NULL, "/", 1)!= FR_OK);
-		  LPUART1buf_puts ("SD CARD UNMOUNTED successfully Retira...\n\r");
-	  }
-	  //while (UserButtonStatus == 0);
+	//Esperamos a que se presione el Boton
+	LPUART1buf_puts((char*)"Iniciamos:\n\r");
+	while(!HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	//Esperamos que se suelte
+	while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
+	UserButtonStatus=0;
+	/*Enviamos el comando de SCAN y guardamos datos*/
+	SAVE_SCAN_DATA();
 
     /* USER CODE END WHILE */
 
