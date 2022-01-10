@@ -68,6 +68,7 @@ TIM_HandleTypeDef htim1;
 /* USER CODE BEGIN PV */
 __IO ITStatus UserButtonStatus = 0;  /* set to 1 after User Button interrupt  */
 uint8_t MainBuf[MainBuf_SIZE];
+char StringBuf[MainBuf_SIZE];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
@@ -374,60 +375,60 @@ void setMotorDutyCycle(float duty){
 
 	}
 }
-void getRPM(float duty){//Revisar, presenta errores de detección y de transmisión al COM
-	//Definimos las variables
-	uint8_t byte,S,notS,C;
-	uint32_t tiempo=0;
-	int count=0;
-	float velocity;
-	//Detenemos el motor y establecemos el dutycycle
-	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
-	HAL_Delay(3);
-	TIM1->CCR2 = (uint32_t)(duty*57.6);//El ARR tiene como valor máximo 5760@144Mhz
-	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
-	//Enviamos el comando por uart
-	UART1buf_flushRx();
-	UART1buf_putn(SCAN_REQUEST,2);
-	//Comenzamos a recibir los valores y lo escribimos en el buffer principal.
-	for(unsigned int i=0;i<7;i++){
-		while(UART1buf_peek()<0);
-		UART1buf_getc();
-	}
-	for(unsigned int i=0;i<1500;i++){
-		while(UART1buf_peek()<0);
-		byte=UART1buf_getc();
-		/****Decodificamos la bandera Flag****/
-		S=byte&0x01;
-		if (S){
-			notS=(byte>>1)&0x01;
-			if(notS==0){
-				tiempo=tiempo-HAL_GetTick();
-				count++;
-			}
-		}
-		for(unsigned int j=0;j<4;j++){
-			while(UART1buf_peek()<0);
-			UART1buf_getc();
-		}
-	}
-	//Detenemos la trama del SCAN
-	UART1buf_putn(STOP_REQUEST, 2);
-	UART1buf_flushRx();
-	//Calculamos la velocidad
-	velocity=60000.0/(float)tiempo;
-	char ascii_chars[10];
-	//Procedemos a convertir el float en ascii
-	ftoa(velocity,ascii_chars,4,3);
-	//Imprimimos en pantalla el resultado
-	if(count==0){
-		LPUART1buf_puts((char*)"Error");
-	}else{
-		LPUART1buf_puts((char*)"Velocidad: ");
-		LPUART1buf_puts(ascii_chars);
-	}
-	//Imprimos una nueva línea
-	LPUART1buf_puts((char*)"\n\r");
-}
+//oid getRPM(float duty){//Revisar, presenta errores de detección y de transmisión al COM
+//	//Definimos las variables
+//	uint8_t byte,S,notS,C;
+//	uint32_t tiempo=0;
+//	int count=0;
+//	float velocity;
+//	//Detenemos el motor y establecemos el dutycycle
+//	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_2);
+//	HAL_Delay(3);
+//	TIM1->CCR2 = (uint32_t)(duty*57.6);//El ARR tiene como valor máximo 5760@144Mhz
+//	HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_2);
+//	//Enviamos el comando por uart
+//	UART1buf_flushRx();
+//	UART1buf_putn(SCAN_REQUEST,2);
+//	//Comenzamos a recibir los valores y lo escribimos en el buffer principal.
+//	for(unsigned int i=0;i<7;i++){
+//		while(UART1buf_peek()<0);
+//		UART1buf_getc();
+//	}
+//	for(unsigned int i=0;i<1500;i++){
+//		while(UART1buf_peek()<0);
+//		byte=UART1buf_getc();
+//		/****Decodificamos la bandera Flag****/
+//		S=byte&0x01;
+//		if (S){
+//			notS=(byte>>1)&0x01;
+//			if(notS==0){
+//				tiempo=tiempo-HAL_GetTick();
+//				count++;
+//			}
+//		}
+//		for(unsigned int j=0;j<4;j++){
+//			while(UART1buf_peek()<0);
+//			UART1buf_getc();
+//		}
+//	}
+//	//Detenemos la trama del SCAN
+//	UART1buf_putn(STOP_REQUEST, 2);
+//	UART1buf_flushRx();
+//	//Calculamos la velocidad
+//	velocity=60000.0/(float)tiempo;
+//	char ascii_chars[10];
+//	//Procedemos a convertir el float en ascii
+//	ftoa(velocity,ascii_chars,4,3);
+//	//Imprimimos en pantalla el resultado
+//	if(count==0){
+//		LPUART1buf_puts((char*)"Error");
+//	}else{
+//		LPUART1buf_puts((char*)"Velocidad: ");
+//		LPUART1buf_puts(ascii_chars);
+//	}
+//	//Imprimos una nueva línea
+//	LPUART1buf_puts((char*)"\n\r");
+//
 void SEND_STOP_REQUEST(){
 	//Enviamos el comando por uart
 	setMotorDutyCycle(0);
@@ -445,16 +446,216 @@ void SEND_RESET_REQUEST(){
 	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
+
 void SAVE_SCAN_DATA(){
+	//Define variables
+	uint16_t temp;
+	float angle,distance,x,y;
+	char ascii_chars[30];
+	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
+	f_unlink("/data.csv");
+	//Ahora lo creamos
+	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+	//Escribimos la primera línea
+	strcpy (buffer, "Data a almacenar [x,y]:\n");
+	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
+	//Ahora encendemos el motor
+	setMotorDutyCycle(60);
+	//Limpiamos el buffer de Recepción
+	UART1buf_flushRx();
+	//Enviamos el comando por uart
+	UART1buf_putn(SCAN_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
+	while(1){
+		while(UART1buf_peek()<0);
+		/****Decodificamos la bandera Flag****/
+		if ((UART1buf_peek()&0x03)==(0x01)){
+			//Leemos el quality
+			UART1buf_getc();
+			/****Decodificamos el checkbit****/
+			while(UART1buf_peek()<0);
+			if (UART1buf_peek()&0x01){
+				/****Decodificamos el Angle****/
+				//Desplazamos los bits
+				temp=(UART1buf_getc()>>1)&0x7F;
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<7);
+				angle=(float)temp/64.0;
+				angle=angle*M_PI/180.0;
+				/****Decodificamos la distancia****/
+				//Desplazamos los bits
+				while(UART1buf_peek()<0);
+				temp=UART1buf_getc();
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<8);
+				distance=(float)temp/4.0;
+				//Procedemos a convertir en coordenadas cartesianas
+				x=distance*cosf(angle+M_PI_2);
+				y=distance*sinf(angle+M_PI_2);
+				float_to_char(x,StringBuf);
+				strcat(StringBuf,",");
+				float_to_char(y,ascii_chars);
+				strcat(StringBuf,ascii_chars);
+				strcat(StringBuf,"\n");
+				break;
+			}else{
+				//Es dato errado
+				for (int i=0;i<3;i++){
+					UART1buf_getc();
+					while(UART1buf_peek()<0);
+				}
+				UART1buf_getc();
+			}
+		}else{
+			//No sirve este dato
+			for (int i=0;i<4;i++){
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+			}
+			UART1buf_getc();
+		}
+	}
+	//Luego de tener el punto de inicio de SCAN, entramos en un bucle
+	//que solo se detendrá cuando se presione el botón Azul
+	while(1){
+		//Escribimos en el buffer principal el nuevo punto
+		while(UART1buf_peek()<0);
+		if ((UART1buf_peek()&0x03)==0x02){
+			UART1buf_getc();
+			/****Decodificamos el checkbit****/
+			while(UART1buf_peek()<0);
+			if (UART1buf_peek()&0x01){
+				/****Decodificamos el Angle****/
+				//Desplazamos los bits
+				temp=(UART1buf_getc()>>1)&0x7F;
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<7);
+				angle=(float)temp/64.0;
+				angle=angle*M_PI/180.0;
+				/****Decodificamos la distancia****/
+				//Desplazamos los bits
+				while(UART1buf_peek()<0);
+				temp=UART1buf_getc();
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<8);
+				distance=(float)temp/4.0;
+				//Procedemos a convertir en coordenadas cartesianas
+				x=distance*cosf(angle+M_PI_2);
+				y=distance*sinf(angle+M_PI_2);
+				float_to_char(x,ascii_chars);
+				strcat(StringBuf,ascii_chars);
+				strcat(StringBuf,",");
+				float_to_char(y,ascii_chars);
+				strcat(StringBuf,ascii_chars);
+				strcat(StringBuf,"\n");
+			}else	{
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+				UART1buf_getc();
+			}
+		//Verificamos que no sea el punto de un nuevo SCAN
+		}else if((UART1buf_peek()&0x03)==0x01){
+			//Leemos el quality
+			UART1buf_getc();
+			/****Decodificamos el checkbit****/
+			while(UART1buf_peek()<0);
+			if (UART1buf_peek()&0x01){
+				//Es un nuevo SCAN, tenemos que enviar la data que se tiene hasta el momento
+				//en el buffer a la SD
+				//Procedemos a guardar la data en la SD
+				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+				f_puts(StringBuf, &fil);
+				/*Volvemos a repetir la operación, pero primero guardamos el primer punto*/
+				/****Decodificamos el Angle****/
+				//Desplazamos los bits
+				temp=(UART1buf_getc()>>1)&0x7F;
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<7);
+				angle=(float)temp/64.0;
+				angle=angle*M_PI/180.0;
+				/****Decodificamos la distancia****/
+				//Desplazamos los bits
+				while(UART1buf_peek()<0);
+				temp=UART1buf_getc();
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<8);
+				distance=(float)temp/4.0;
+				//Procedemos a convertir en coordenadas cartesianas
+				x=distance*cosf(angle+M_PI_2);
+				y=distance*sinf(angle+M_PI_2);
+				float_to_char(x,StringBuf);
+				strcat(StringBuf,",");
+				float_to_char(y,ascii_chars);
+				strcat(StringBuf,ascii_chars);
+				strcat(StringBuf,"\n");
+			}else{
+				//Es dato errado
+				for (int i=0;i<3;i++){
+					UART1buf_getc();
+					while(UART1buf_peek()<0);
+				}
+				UART1buf_getc();
+				//Punto no válido
+				strcat(StringBuf,"Inf,Inf\n");
+			}
+		}else{
+			//Dato errado
+			for (int i=0;i<4;i++){
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+			}
+			UART1buf_getc();
+			//Punto no válido
+			strcat(StringBuf,"Inf,Inf\n");
+		}
+		if (UserButtonStatus){
+			//Cerramos el archivo
+			f_close(&fil);
+			//Salimos del while
+			UserButtonStatus=0;
+			break;
+		}
+	}
+	/* Unmount SDCARD */
+	while(f_mount(NULL, "/", 1)!= FR_OK);
+	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+	//Mandamos el comando de STOP
+	UART1buf_putn(STOP_REQUEST, 2);
+	//Detenemos el motor
+	setMotorDutyCycle(0);
+	HAL_Delay(2);
+	//Borramos data del buffer
+	UART1buf_flushRx();
+	//Enviamos "fin de SAVE_SCAN_DATA"
+	LPUART1buf_puts ("Fin de la operación\n\r");
+}
+
+
+void SAVE_SCAN_DATA_old(){
 	//Define variables
 	uint16_t temp;
 	float angle,distance,x,y;
 	char ascii_chars[30];
 	char C;
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
-
+	f_unlink("/data.csv");
 	//Ahora lo creamos
-	while(f_open(&fil, "final.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
 	//Escribimos la primera línea
 	strcpy (buffer, "Data a almacenar [x,y]:\n");
 	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
@@ -535,7 +736,7 @@ void SAVE_SCAN_DATA(){
 				while(UART1buf_peek()<0);
 			}
 			UART1buf_getc();
-			f_puts("Inf,Inf\n", &fil);
+			f_puts("S,S\n", &fil);
 		}
 		//Verificar si se había presionado el boton
 		if (UserButtonStatus){
@@ -782,10 +983,9 @@ int main(void)
 	//Esperamos que se suelte
 	while(HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13));
 	UserButtonStatus=0;
-	/*Enviamos el comando de SCAN y guardamos datos*/
 	SAVE_SCAN_DATA();
-
-    /* USER CODE END WHILE */
+	/*Enviamos el comando de SCAN y guardamos datos*/
+	/* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
