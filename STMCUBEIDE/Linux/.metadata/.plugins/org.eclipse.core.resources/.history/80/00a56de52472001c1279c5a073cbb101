@@ -458,8 +458,8 @@ void SAVE_SCAN_DATA(){
 	//Escribimos la primera línea
 	strcpy (buffer, "Data a almacenar [x,y]:\n");
 	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
-		/*//Cerramos el archivo para evitar problemas de datos perdidos en el read/write
-		f_close(&fil);*/
+	//Cerramos el archivo para evitar problemas de datos perdidos en el read/write
+	f_close(&fil);
 	//Ahora encendemos el motor
 	setMotorDutyCycle(60);
 	//Limpiamos el buffer de Recepción
@@ -510,23 +510,16 @@ void SAVE_SCAN_DATA(){
 				x=distance*cosf(angle+M_PI_2);
 				y=distance*sinf(angle+M_PI_2);
 				//Procedemos a guardar la data en la SD
-					/*while(f_open(&fil, "final.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);*/
+				while(f_open(&fil, "final.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
 				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+				//f_puts("[", &fil);
 				float_to_char(x,ascii_chars);
 				f_puts(ascii_chars, &fil);
 				f_puts(",", &fil);
 				float_to_char(y,ascii_chars);
 				f_puts(ascii_chars, &fil);
 				f_puts("\n", &fil);
-					/*f_close(&fil);*/
-			}else{
-				//Tenemos data errónea
-				for (int i=0;i<4;i++){
-					UART1buf_getc();
-					while(UART1buf_peek()<0);
-				}
-				UART1buf_getc();
-				f_puts("Inf,Inf\n", &fil);
+				f_close(&fil);
 			}
 		}else{
 			//Tenemos data errónea
@@ -539,9 +532,7 @@ void SAVE_SCAN_DATA(){
 		}
 		//Verificar si se había presionado el boton
 		if (UserButtonStatus){
-			//Cerramos el archivo
-			f_close(&fil);
-			//Salimos del while
+			//Salir del while
 			UserButtonStatus=0;
 			break;
 		}
