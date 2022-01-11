@@ -1,0 +1,5 @@
+1641915434596	Delete resource 'RPLIDAR/Core/Src/fatfs_sd_old.c'
+1641915436123	Delete resource 'RPLIDAR/Core/Inc/fatfs_sd_old.h'
+1641936449790	Delete resource 'RPLIDAR_L4/Core/main_old.c'
+1641940262779	Delete resource 'RPLIDAR_L4/Core/Src/main_old.c'
+1641940908604	Delete resource 'RPLIDAR_L4/FATFS/Target/user_diskio.c'

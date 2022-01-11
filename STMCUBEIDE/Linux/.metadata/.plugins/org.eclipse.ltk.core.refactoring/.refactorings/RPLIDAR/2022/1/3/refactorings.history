@@ -1,0 +1,3 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">&#x0A;<refactoring comment="Rename resource &apos;RPLIDAR/Core/Inc/fatfs_sd.h&apos; to &apos;fatfs_sd_old.h&apos;" description="Rename resource &apos;fatfs_sd.h&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="Core/Inc/fatfs_sd.h" name="fatfs_sd_old.h" stamp="1641915229850" updateReferences="true"/>&#x0A;<refactoring comment="Rename resource &apos;RPLIDAR/Core/Src/fatfs_sd.c&apos; to &apos;fatfs_sd_old.c&apos;" description="Rename resource &apos;fatfs_sd.c&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="Core/Src/fatfs_sd.c" name="fatfs_sd_old.c" stamp="1641915237609" updateReferences="true"/>
+</session>

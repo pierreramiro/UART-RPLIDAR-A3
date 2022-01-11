@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Rename resource &apos;RPLIDAR_L4/Core/main.c&apos; to &apos;main_old.c&apos;" description="Rename resource &apos;main.c&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="Core/main.c" name="main_old.c" stamp="1641936426229" updateReferences="true"/>
+</session>
