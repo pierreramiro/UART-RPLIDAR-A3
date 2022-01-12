@@ -26,6 +26,7 @@
 #include "uart_buf_l4.h"
 #include "string.h"
 #include "fatfs_sd.h"
+#include "stdio.h"
 
 /* USER CODE END Includes */
 
@@ -49,7 +50,7 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  MainBuf_SIZE 		(2<<14)//13->8192 14->16384 16->65536
+#define  MainBuf_SIZE 		(1<<15)//13->8192 14->16384 15->32768 16->65536
 #define precision 3  //precision for decimal digits
 
 /* USER CODE END PD */
@@ -67,7 +68,6 @@ TIM_HandleTypeDef htim1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-__IO ITStatus UserButtonStatus = 0;  /* set to 1 after User Button interrupt  */
 char StringBuf[MainBuf_SIZE];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
@@ -93,143 +93,205 @@ FATFS *pfs;
 DWORD fre_clust;
 uint32_t total, free_space;
 
-#define BUFFER_SIZE 128
-char buffer[BUFFER_SIZE];  // to store strings..
-int bufsize (char *buf)
-{
-	int i=0;
-	while (*buf++ != '\0') i++;
-	return i;
-}
-
-void clear_buffer (void)
-{
-	for (int i=0; i<BUFFER_SIZE; i++) buffer[i] = '\0';
-}
-
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
-{
-  //Button PB0
-  if (GPIO_Pin == GPIO_PIN_4)
-  {
-    UserButtonStatus = 1;
-  }
+
+void add_theta_rho_to_StringBuf (char *p,float theta,float rho,unsigned int *pointer_n_chars){
+	int int_part,k,ten_pow,temp_int,index=pointer_n_chars[0];
+		/*Iniciamos con el x*/
+		//verificamos si es negativo
+		if(theta<0.0){
+			p[index++]='-';
+			//lo volvemos positivo
+			theta*=-1;
+		}
+		//Extraemos la parte entera
+		int_part=theta;
+		//Nos quedamos con los decimales
+		theta-=int_part;
+		//Definimos el número de dígitos máximos en la parte entera
+		k=2;
+		while(k>-1){
+			ten_pow = pow(10,k);
+			temp_int = int_part/ten_pow;
+			if(temp_int>0){
+				break;
+			}
+			k--;
+		}
+		//La cantidad de dígitos en la parte entera es k+1, donde k es el valor obtenido
+		//en el bucle anterior
+		//Procedemos a guarda el valor de la parte entera de x
+		for(int z=k+1;z>0;z--){
+			ten_pow = pow(10,z-1);
+			//Obtenemos el digito entero más alejado de la coma
+			temp_int = int_part/ten_pow ;
+			//Lo guardamos en el StringBuf
+			p[index++]=temp_int+48;
+			//Actualizamos el dígito, obteniendo el residuo de la operación de división
+			int_part%=ten_pow;
+		}
+		//Añadimos el punto decimal
+		p[index++] = '.';
+		/* Guardamos en el StringBuf los dígitos decimales*/
+		for(int z=0;z<precision;z++){
+			theta*=10.0;
+			int_part = theta;
+			p[index++]=int_part+48;
+			theta-=int_part ;
+		}
+		//Añadimos la coma para dar pase al otro número
+		p[index++]=',';
+		/*Continuamos con la conversión de y a string, es prácticamente repetir lo anterior*/
+		//verificamos si es negativo
+		if(rho<0.0){
+			p[index++]='-';
+			//lo volvemos positivo
+			rho*=-1;
+		}
+		//Extraemos la parte entera
+		int_part=rho;
+		//Nos quedamos con los decimales
+		rho-=int_part;
+		//Definimos nuevamente el número de dígitos máximos en la parte entera
+		k=4;
+		while(k>-1){
+			ten_pow = pow(10,k);
+			temp_int = int_part/ten_pow;
+			if(temp_int>0){
+				break;
+			}
+			k--;
+		}
+		//La cantidad de dígitos en la parte entera es k+1, donde k es el valor obtenido
+		//en el bucle anterior
+		//Procedemos a guarda el valor de la parte entera de x
+		for(int z=k+1;z>0;z--){
+			ten_pow = pow(10,z-1);
+			//Obtenemos el digito entero más alejado de la coma
+			temp_int = int_part/ten_pow ;
+			//Lo guardamos en el StringBuf
+			p[index++]=temp_int+48;
+			//Actualizamos el dígito, obteniendo el residuo de la operación de división
+			int_part%=ten_pow;
+		}
+		//Añadimos el punto decimal
+		p[index++] = '.';
+		/* Guardamos en el StringBuf los dígitos decimales*/
+		for(int z=0;z<precision;z++){
+			rho*=10.0;
+			int_part = rho;
+			p[index++]=int_part+48;
+			rho-=int_part ;
+		}
+		//Añadimos el salto de línea
+		p[index++]='\n';
+		//Actualizamos el valor de la cantidad de caracteres
+		pointer_n_chars[0]=index;
 }
-uint8_t  BinToAsc(uint8_t  BinValue)
-{
-    BinValue &= 0x0F;
-    if(BinValue > 9) BinValue += 7;
-    return(BinValue + '0');
-}
-// Reverses a string 'str' of length 'len'
-void reverse(char* str, int len)
-{
-    int i = 0, j = len - 1, temp;
-    while (i < j) {
-        temp = str[i];
-        str[i] = str[j];
-        str[j] = temp;
-        i++;
-        j--;
-    }
-}
-// Converts a given integer x to string str[].
-// d is the number of digits required in the output.
-// If d is more than the number of digits in x,
-// then 0s are added at the beginning.
-int intToStr(int x, char str[], int d)
-{
-    int i = 0;
-    while (x) {
-        str[i++] = (x % 10) + '0';
-        x = x / 10;
-    }
-    // If number of digits required is more, then
-    // add 0s at the beginning
-    while (i < d)
-        str[i++] = '0';
 
-    reverse(str, i);
-    str[i] = '\0';
-    return i;
-}
-// Converts a floating-point/double number to a string.
-void ftoa(float n, char* res, int beforepoint,int afterpoint)
-{
-    // Extract integer part
-    int ipart = (int)n;
 
-    // Extract floating part
-    float fpart = n - (float)ipart;
 
-    // convert integer part to string
-    int i = intToStr(ipart, res, beforepoint);
 
-    // check for display option after point
-    if (afterpoint != 0) {
-        res[i] = '.'; // add dot
-
-        // Get the value of fraction part upto given no.
-        // of points after dot. The third parameter
-        // is needed to handle cases like 233.007
-        fpart = fpart * (float)(pow(10, afterpoint));
-
-        intToStr((int)fpart, res + i + 1, afterpoint);
-    }
-}
-void float_to_char(float f, char *p) {
-	int a,b,c,k,l=0,m,i=0;
-	// check for negetive float
-	if(f<0.0)
-	{
-		p[i++]='-';
-		f*=-1;
+void add_xy_to_StringBuf (char *p,float x,float y,unsigned int *pointer_n_chars){
+	int int_part,k,ten_pow,temp_int,index=pointer_n_chars[0];
+	/*Iniciamos con el x*/
+	//verificamos si es negativo
+	if(x<0.0){
+		p[index++]='-';
+		//lo volvemos positivo
+		x*=-1;
 	}
-	a=f;	// extracting whole number
-	f-=a;	// extracting decimal part
-	k = precision;
-	// number of digits in whole number
-	while(k>-1)
-	{
-		l = pow(10,k);
-		m = a/l;
-		if(m>0)
-		{
+	//Extraemos la parte entera
+	int_part=x;
+	//Nos quedamos con los decimales
+	x-=int_part;
+	//Definimos el número de dígitos máximos en la parte entera
+	//(en este caso k=4 para definir 5 digitos válidos. Ya que mas distance es 25000mm)
+	k=4;
+	while(k>-1){
+		ten_pow = pow(10,k);
+		temp_int = int_part/ten_pow;
+		if(temp_int>0){
 			break;
 		}
-	k--;
+		k--;
 	}
-	// number of digits in whole number are k+1
-	/*
-	extracting most significant digit i.e. right most digit , and concatenating to string
-	obtained as quotient by dividing number by 10^k where k = (number of digit -1)
-	*/
-	for(l=k+1;l>0;l--)
-	{
-		b = pow(10,l-1);
-		c = a/b;
-		p[i++]=c+48;
-		a%=b;
+	//La cantidad de dígitos en la parte entera es k+1, donde k es el valor obtenido
+	//en el bucle anterior
+	//Procedemos a guarda el valor de la parte entera de x
+	for(int z=k+1;z>0;z--){
+		ten_pow = pow(10,z-1);
+		//Obtenemos el digito entero más alejado de la coma
+		temp_int = int_part/ten_pow ;
+		//Lo guardamos en el StringBuf
+		p[index++]=temp_int+48;
+		//Actualizamos el dígito, obteniendo el residuo de la operación de división
+		int_part%=ten_pow;
 	}
-	p[i++] = '.';
-	/* extracting decimal digits till precision */
-	for(l=0;l<precision;l++)
-	{
-		f*=10.0;
-		b = f;
-		p[i++]=b+48;
-		f-=b;
+	//Añadimos el punto decimal
+	p[index++] = '.';
+	/* Guardamos en el StringBuf los dígitos decimales*/
+	for(int z=0;z<precision;z++){
+		x*=10.0;
+		int_part = x;
+		p[index++]=int_part+48;
+		x-=int_part ;
 	}
-	p[i]='\0';
+	//Añadimos la coma para dar pase al otro número
+	p[index++]=',';
+	/*Continuamos con la conversión de y a string, es prácticamente repetir lo anterior*/
+	//verificamos si es negativo
+	if(y<0.0){
+		p[index++]='-';
+		//lo volvemos positivo
+		y*=-1;
+	}
+	//Extraemos la parte entera
+	int_part=y;
+	//Nos quedamos con los decimales
+	y-=int_part;
+	//Definimos nuevamente el número de dígitos máximos en la parte entera
+	k=4;
+	while(k>-1){
+		ten_pow = pow(10,k);
+		temp_int = int_part/ten_pow;
+		if(temp_int>0){
+			break;
+		}
+		k--;
+	}
+	//La cantidad de dígitos en la parte entera es k+1, donde k es el valor obtenido
+	//en el bucle anterior
+	//Procedemos a guarda el valor de la parte entera de x
+	for(int z=k+1;z>0;z--){
+		ten_pow = pow(10,z-1);
+		//Obtenemos el digito entero más alejado de la coma
+		temp_int = int_part/ten_pow ;
+		//Lo guardamos en el StringBuf
+		p[index++]=temp_int+48;
+		//Actualizamos el dígito, obteniendo el residuo de la operación de división
+		int_part%=ten_pow;
+	}
+	//Añadimos el punto decimal
+	p[index++] = '.';
+	/* Guardamos en el StringBuf los dígitos decimales*/
+	for(int z=0;z<precision;z++){
+		y*=10.0;
+		int_part = y;
+		p[index++]=int_part+48;
+		y-=int_part ;
+	}
+	//Añadimos el salto de línea
+	p[index++]='\n';
+	//Actualizamos el valor de la cantidad de caracteres
+	pointer_n_chars[0]=index;
 }
 void setMotorDutyCycle(float duty){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
@@ -259,18 +321,18 @@ void SEND_RESET_REQUEST(){
 	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
-void SAVE_SCAN_DATA(){
+void SAVE_SCAN_DATA_old(){
 	//Define variables
 	uint16_t temp;
 	float angle,distance,x,y;
-	char ascii_chars[30];
+	unsigned int n_chars=0,n_points=0,len_string;
+	char chars_buf[40];
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/data.csv");
 	//Ahora lo creamos
 	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
 	//Escribimos la primera línea
-	strcpy (buffer, "Data a almacenar [x,y]:\n");
-	while(f_write(&fil, buffer, bufsize(buffer), &bw)!= FR_OK);
+	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
 	//Ahora encendemos el motor
 	setMotorDutyCycle(60);
 	//Limpiamos el buffer de Recepción
@@ -316,11 +378,15 @@ void SAVE_SCAN_DATA(){
 				x=distance*cosf(angle+M_PI_2);
 				y=distance*sinf(angle+M_PI_2);
 				//Guardamos los valores en StringBuf
-				float_to_char(x,StringBuf);
-				strcat(StringBuf,",");
-				float_to_char(y,ascii_chars);
-				strcat(StringBuf,ascii_chars);
-				strcat(StringBuf,"\n");
+				//sprintf(chars_buf,"%.3f,%.3f\n",angle,distance);
+				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+				len_string=strlen(chars_buf);
+				strcpy(&StringBuf[n_chars],chars_buf);
+				n_chars+=len_string;
+				//n_chars=strlen(chars_buf);
+				//add_theta_rho_to_StringBuf(StringBuf, angle, distance, &n_chars);
+				//add_xy_to_StringBuf(StringBuf, angle, distance, &n_chars);
+				n_points++;
 				break;
 			}else{
 				//Es dato errado
@@ -342,9 +408,19 @@ void SAVE_SCAN_DATA(){
 	//Luego de tener el punto de inicio de SCAN, entramos en un bucle
 	//que solo se detendrá cuando se presione el botón Azul
 	while(1){
-		//Escribimos en el buffer principal el nuevo punto
+		//Debemos verificar si el buffer está lleno
+		if ((n_chars>MainBuf_SIZE-40)||(n_points>400)){
+			//Enviamos los datos a la SD
+			strcat(&StringBuf[n_chars],"---,---\n");
+			while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+			f_puts(StringBuf, &fil);
+			//Reseteamos variables
+			n_chars=0;
+			n_points=0;
+		}
+		//Analizamos el siguiente punto
 		while(UART1buf_peek()<0);
-		if ((UART1buf_peek()&0x03)==0x02){
+		if (((UART1buf_peek()&0x03)==0x02)||((UART1buf_peek()&0x03)==0x01)){
 			UART1buf_getc();
 			/****Decodificamos el checkbit****/
 			while(UART1buf_peek()<0);
@@ -366,77 +442,26 @@ void SAVE_SCAN_DATA(){
 				//Procedemos a convertir en coordenadas cartesianas
 				x=distance*cosf(angle+M_PI_2);
 				y=distance*sinf(angle+M_PI_2);
-				float_to_char(x,ascii_chars);
-				strcat(StringBuf,ascii_chars);
-				strcat(StringBuf,",");
-				float_to_char(y,ascii_chars);
-				strcat(StringBuf,ascii_chars);
-				strcat(StringBuf,"\n");
-			}else	{
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-				UART1buf_getc();
-			}
-		//Verificamos que no sea el punto de un nuevo SCAN
-		}else if((UART1buf_peek()&0x03)==0x01){
-			//Leemos el quality
-			UART1buf_getc();
-			/****Decodificamos el checkbit****/
-			while(UART1buf_peek()<0);
-			if (UART1buf_peek()&0x01){
-				//Es un nuevo SCAN, tenemos que enviar la data que se tiene hasta el momento
-				//en el buffer a la SD
-				//Procedemos a guardar la data en la SD
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts(StringBuf, &fil);
-				//Volvemos a repetir la operación, pero debemos sincronizar nuevamente la data
-				//para ello, esperamos a que el byte recibido sea una nuevo SCAN
-				UART1buf_flushRx();
-				while(1){
-					while(UART1buf_peek()<0);
-					if ((UART1buf_peek()&0x03)==0x01){
-						UART1buf_getc();
-						if (UART1buf_peek()&0x01){
-							//Se verifica el checkbit, estamos frente a un nuevo SCAN
-							break;
-						}
-					}else
-						UART1buf_getc();
-				}
-				temp=(UART1buf_getc()>>1)&0x7F;
-				while(UART1buf_peek()<0);
-				temp|=(UART1buf_getc()<<7);
-				angle=(float)temp/64.0;
-				angle=angle*M_PI/180.0;
-				/****Decodificamos la distancia****/
-				//Desplazamos los bits
-				while(UART1buf_peek()<0);
-				temp=UART1buf_getc();
-				while(UART1buf_peek()<0);
-				temp|=(UART1buf_getc()<<8);
-				distance=(float)temp/4.0;
-				//Procedemos a convertir en coordenadas cartesianas
-				x=distance*cosf(angle+M_PI_2);
-				y=distance*sinf(angle+M_PI_2);
-				//Guardamos los valores en StringBuf desde el inicio
-				float_to_char(x,StringBuf);
-				strcat(StringBuf,",");
-				float_to_char(y,ascii_chars);
-				strcat(StringBuf,ascii_chars);
-				strcat(StringBuf,"\n");
+				//sprintf(chars_buf,"%.3f,%.3f\n",angle,distance);
+				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+				len_string=strlen(chars_buf);
+				strcpy(&StringBuf[n_chars],chars_buf);
+				n_chars+=len_string;
+				//add_theta_rho_to_StringBuf(StringBuf, angle, distance, &n_chars);
+				//add_xy_to_StringBuf(StringBuf, angle, distance, &n_chars);
+				n_points++;
 			}else{
-				//Es dato errado
-				for (int i=0;i<3;i++){
-					UART1buf_getc();
-					while(UART1buf_peek()<0);
-				}
+				//Dato errado
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
+				UART1buf_getc();
+				while(UART1buf_peek()<0);
 				UART1buf_getc();
 				//Punto no válido
-				strcat(StringBuf,"Inf,Inf\n");
+				strcat(StringBuf,"NaN,NaN\n");
+				n_points++;
 			}
 		}else{
 			//Dato errado
@@ -447,12 +472,13 @@ void SAVE_SCAN_DATA(){
 			UART1buf_getc();
 			//Punto no válido
 			strcat(StringBuf,"Inf,Inf\n");
+			n_points++;
 		}
 		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
+			HAL_Delay(50);
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
-			UserButtonStatus=0;
 			break;
 		}
 	}
@@ -504,11 +530,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_USART2_UART_Init();
+  //MX_USART2_UART_Init();
   MX_SPI1_Init();
   MX_TIM1_Init();
   MX_FATFS_Init();
   /* USER CODE BEGIN 2 */
+  char buffer[64];
   //Inicializamos los UARTs
   LPUART1buf_init(115200,SERIAL_8N1,0);
   UART1buf_init(256000,SERIAL_8N1,0);
@@ -523,11 +550,9 @@ int main(void)
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
   sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
   LPUART1buf_puts(buffer);
-  clear_buffer();
   free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
   sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
   LPUART1buf_puts(buffer);
-  clear_buffer();
   //Enviamos el comando de RESET
   SEND_RESET_REQUEST();//DESCOMENTAR LUEGO DE TEMRINAR CON EL SD
   /* USER CODE END 2 */
@@ -541,9 +566,9 @@ int main(void)
 	  while(!HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4));
 	  //Esperamos que se suelte
 	  while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4));
-	  UserButtonStatus=0;
 	  LPUART1buf_puts((char*)"Mandamos SCAN request:\n\r");
 	  SAVE_SCAN_DATA();
+	  while(1);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -732,35 +757,6 @@ static void MX_TIM1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
 
 /**
   * @brief GPIO Initialization Function
@@ -799,7 +795,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : PB4 */
   GPIO_InitStruct.Pin = GPIO_PIN_4;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
 }
@@ -819,7 +815,7 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-	  HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_4);
+	  HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
 	  HAL_Delay(200);
   }
   /* USER CODE END Error_Handler_Debug */
