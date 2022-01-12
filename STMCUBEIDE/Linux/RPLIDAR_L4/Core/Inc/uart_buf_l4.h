@@ -30,7 +30,7 @@
 
 /** Tama�o del buffer circular de recepción. Debe ser potencia de 2. */
 #define LPUART1_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
-#define UART1_RX_BUFFER_SIZE 1024 /**< Tamaño del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART1_RX_BUFFER_SIZE 4096 /**< Tamaño del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART2_RX_BUFFER_SIZE 128 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART3_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART4_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */

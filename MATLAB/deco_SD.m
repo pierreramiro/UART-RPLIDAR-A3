@@ -1,5 +1,5 @@
 clear;clc;close all
-data=readmatrix("data.csv");
+data=readmatrix("longdata.csv");
 %% Eliminamos puntos que dieron Inf
 data(any(isinf(data),2),:) = [];
 data(any(isinf(data),2),:) = [];

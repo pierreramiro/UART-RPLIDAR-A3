@@ -50,7 +50,7 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  MainBuf_SIZE 		(1<<15)//13->8192 14->16384 15->32768 16->65536
+#define  MainBuf_SIZE 		(1<<14)//13->8192 14->16384 15->32768 16->65536
 #define precision 3  //precision for decimal digits
 
 /* USER CODE END PD */
@@ -68,7 +68,9 @@ TIM_HandleTypeDef htim1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-float ValBuf[4000];
+char StringBuf[MainBuf_SIZE];
+int MainBuf[800*5];
+//float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
@@ -324,9 +326,9 @@ void SEND_RESET_REQUEST(){
 void SAVE_SCAN_DATA(){
 	//Define variables
 	uint16_t temp;
-	float angle,distance;
+	float angle,distance,x,y;
 	unsigned int n_scans=0,n_points=0,n_wrong_points=0;
-	char chars_buf[40];
+	char chars_buf[30];
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/data.csv");
 	//Ahora lo creamos
@@ -375,8 +377,10 @@ void SAVE_SCAN_DATA(){
 				temp|=(UART1buf_getc()<<8);
 				distance=(float)temp/4.0;
 				//Procedemos a convertir en coordenadas cartesianas
-				ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
-				ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
+				x=distance*cosf(angle+M_PI_2);
+				y=distance*sinf(angle+M_PI_2);
+				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+				strcat(&StringBuf[0],chars_buf);
 				n_points++;
 				break;
 			}else{
@@ -396,89 +400,60 @@ void SAVE_SCAN_DATA(){
 			UART1buf_getc();
 		}
 	}
-	//Luego de tener el punto de inicio de SCAN, entramos en un bucle
-	//que solo se detendrá cuando se presione el botón Azul
+	//Ahora, entramos en un bucle que solo se detendrá cuando se presione el botón Azul
 	while(1){
-		//Verificamos si estamos en el 4to SCAN
-		if(n_scans>=4){
-			//Mandamos el comando de STOP para detener la transmisión
-			UART1buf_putn(STOP_REQUEST, 2);
-			//Procesamos los datos y lo enviamos a la SD
-			for (unsigned int i = 0; i < n_points-1; ++i) {
-				sprintf(chars_buf,"%.3f,%.3f\n",ValBuf[i*2+0],ValBuf[i*2+1]);
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts(chars_buf, &fil);
-			}
-			for (unsigned int i = 0; i < n_wrong_points; ++i) {
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts("Inf,Inf\n", &fil);
-			}
-			n_points=0;
-			n_wrong_points=0;
-			n_scans=0;
-			//Limpiamos el buffer Rx del Uart
-			UART1buf_flushRx();
-			/************************************/
-			/*Volvemos a sincronizar con la data*/
-			/************************************/
-			UART1buf_putn(SCAN_REQUEST,2);
-			//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
-			for (int i=0;i<7;i++){
-				while(UART1buf_peek()<0);
-				if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-					LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
-					//Enviar nuevamente el comando
-
-					//Analizar si está en protección
-					while(1);
+		HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+		for (unsigned int i= 0; i < 800*5; ++i) {///debe ser multiplo de 5 y menor al tamaño del buffer circular
+			while(UART1buf_peek()<0);
+			MainBuf[i]=UART1buf_getc();
+		}
+		HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+		//Decodificamos los puntos del buffer principal. No hay necesidad de esperar
+		for (unsigned int i= 0; i < 800; ++i) {
+			//Guardamos el punto en el StringBuf
+			if (((MainBuf[i*5+0]&0x03)==0x02)||((MainBuf[i*5+0]&0x03)==0x01)){
+				if ((MainBuf[i*5+0]&0x03)==0x01){
+					//Estamos ante un nuevo SCAN
+					n_scans++;
 				}
-			}
-			//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
-			while(1){
-				while(UART1buf_peek()<0);
-				/****Decodificamos la bandera Flag S****/
-				if ((UART1buf_peek()&0x03)==(0x01)){
-					//Leemos el quality
-					UART1buf_getc();
-					/****Decodificamos el checkbit****/
-					while(UART1buf_peek()<0);
-					if (UART1buf_peek()&0x01){
-						/****Decodificamos el Angle****/
-						//Desplazamos los bits
-						temp=(UART1buf_getc()>>1)&0x7F;
-						while(UART1buf_peek()<0);
-						temp|=(UART1buf_getc()<<7);
-						angle=(float)temp/64.0;
-						angle=angle*M_PI/180.0;
-						/****Decodificamos la distancia****/
-						//Desplazamos los bits
-						while(UART1buf_peek()<0);
-						temp=UART1buf_getc();
-						while(UART1buf_peek()<0);
-						temp|=(UART1buf_getc()<<8);
-						distance=(float)temp/4.0;
-						//Procedemos a convertir en coordenadas cartesianas
-						ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
-						ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
-						n_points++;
-						break;
-					}else{
-						//Es dato errado
-						for (int i=0;i<3;i++){
-							UART1buf_getc();
-							while(UART1buf_peek()<0);
-						}
-						UART1buf_getc();
-					}
+				/****Decodificamos el checkbit****/
+				if (MainBuf[i*5+1]&0x01){
+					/****Decodificamos el Angle****/
+					//Desplazamos los bits
+					temp=(MainBuf[i*5+1]>>1)&0x7F;
+					temp|=(MainBuf[i*5+2]<<7);
+					angle=(float)temp/64.0;
+					angle=angle*M_PI/180.0;
+					/****Decodificamos la distancia****/
+					//Desplazamos los bits
+					temp=MainBuf[i*5+3];
+					temp|=(MainBuf[i*5+4]<<8);
+					distance=(float)temp/4.0;
+					///Procedemos a convertir en coordenadas cartesianas
+					x=distance*cosf(angle+M_PI_2);
+					y=distance*sinf(angle+M_PI_2);
+					sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+					strcat(StringBuf,chars_buf);
+					n_points++;
 				}else{
-					//No sirve este dato
-					for (int i=0;i<4;i++){
-						UART1buf_getc();
-						while(UART1buf_peek()<0);
-					}
-					UART1buf_getc();
+					//Dato errado
+					n_wrong_points++;
+					strcat(StringBuf,"NaN,NaN\n");
 				}
+			}else{
+				//Dato errado
+				n_wrong_points++;
+				strcat(StringBuf,"Inf,Inf\n");
 			}
+		}
+		if(n_scans>=4){
+			//Procesamos los datos y lo enviamos a la SD
+			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+			while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+			f_puts(StringBuf, &fil);
+			sprintf(StringBuf,"--,--");
+			n_scans=0;
+			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
 		}
 		//Verificamos que se presionó el botón
 		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
@@ -487,44 +462,6 @@ void SAVE_SCAN_DATA(){
 			f_close(&fil);
 			//Salimos del while
 			break;
-		}
-		//Guardamos el punto en el ValBuf
-		while(UART1buf_peek()<0);
-		if (((UART1buf_peek()&0x03)==0x02)||((UART1buf_peek()&0x03)==0x01)){
-			if ((UART1buf_peek()&0x03)==0x01){
-				//Estamos ante un nuevo SCAN
-				n_scans++;
-			}
-			//Leemos el Quality
-			UART1buf_getc();
-			/****Decodificamos el checkbit****/
-			while(UART1buf_peek()<0);
-			if (UART1buf_peek()&0x01){
-				/****Decodificamos el Angle****/
-				//Desplazamos los bits
-				temp=(UART1buf_getc()>>1)&0x7F;
-				while(UART1buf_peek()<0);
-				temp|=(UART1buf_getc()<<7);
-				angle=(float)temp/64.0;
-				angle=angle*M_PI/180.0;
-				/****Decodificamos la distancia****/
-				//Desplazamos los bits
-				while(UART1buf_peek()<0);
-				temp=UART1buf_getc();
-				while(UART1buf_peek()<0);
-				temp|=(UART1buf_getc()<<8);
-				distance=(float)temp/4.0;
-				//Procedemos a convertir en coordenadas cartesianas
-				ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
-				ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
-				n_points++;
-			}else{
-				//Dato errado
-				n_wrong_points++;
-			}
-		}else{
-			//Dato errado
-			n_wrong_points++;
 		}
 	}
 	/* Unmount SDCARD */
@@ -540,6 +477,233 @@ void SAVE_SCAN_DATA(){
 	//Enviamos "fin de SAVE_SCAN_DATA"
 	LPUART1buf_puts ("Fin de la operación\n\r");
 }
+
+//void SAVE_SCAN_DATA_old(){
+//	//Define variables
+//	uint16_t temp;
+//	float angle,distance;
+//	unsigned int n_scans=0,n_points=0,n_wrong_points=0;
+//	char chars_buf[40];
+//	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
+//	f_unlink("/data.csv");
+//	//Ahora lo creamos
+//	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+//	//Escribimos la primera línea
+//	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
+//	//Ahora encendemos el motor
+//	setMotorDutyCycle(60);
+//	//Limpiamos el buffer de Recepción
+//	UART1buf_flushRx();
+//	//Enviamos el comando por uart
+//	UART1buf_putn(SCAN_REQUEST,2);
+//	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+//	for (int i=0;i<7;i++){
+//		while(UART1buf_peek()<0);
+//		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+//			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//			//Enviar nuevamente el comando
+//
+//			//Analizar si está en protección
+//			while(1);
+//		}
+//	}
+//	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
+//	while(1){
+//		while(UART1buf_peek()<0);
+//		/****Decodificamos la bandera Flag S****/
+//		if ((UART1buf_peek()&0x03)==(0x01)){
+//			//Leemos el quality
+//			UART1buf_getc();
+//			/****Decodificamos el checkbit****/
+//			while(UART1buf_peek()<0);
+//			if (UART1buf_peek()&0x01){
+//				/****Decodificamos el Angle****/
+//				//Desplazamos los bits
+//				temp=(UART1buf_getc()>>1)&0x7F;
+//				while(UART1buf_peek()<0);
+//				temp|=(UART1buf_getc()<<7);
+//				angle=(float)temp/64.0;
+//				angle=angle*M_PI/180.0;
+//				/****Decodificamos la distancia****/
+//				//Desplazamos los bits
+//				while(UART1buf_peek()<0);
+//				temp=UART1buf_getc();
+//				while(UART1buf_peek()<0);
+//				temp|=(UART1buf_getc()<<8);
+//				distance=(float)temp/4.0;
+//				//Procedemos a convertir en coordenadas cartesianas
+//				ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
+//				ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
+//				n_points++;
+//				break;
+//			}else{
+//				//Es dato errado
+//				for (int i=0;i<3;i++){
+//					UART1buf_getc();
+//					while(UART1buf_peek()<0);
+//				}
+//				UART1buf_getc();
+//			}
+//		}else{
+//			//No sirve este dato
+//			for (int i=0;i<4;i++){
+//				UART1buf_getc();
+//				while(UART1buf_peek()<0);
+//			}
+//			UART1buf_getc();
+//		}
+//	}
+//	//Luego de tener el punto de inicio de SCAN, entramos en un bucle
+//	//que solo se detendrá cuando se presione el botón Azul
+//	while(1){
+//		//Verificamos si estamos en el 4to SCAN
+//		if(n_scans>=4){
+//			//Mandamos el comando de STOP para detener la transmisión
+//			UART1buf_putn(STOP_REQUEST, 2);
+//			//Procesamos los datos y lo enviamos a la SD
+//			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//			HAL_Delay(300);
+//			for (unsigned int i = 0; i < n_points-1; ++i) {
+//				HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//				sprintf(chars_buf,"%.3f,%.3f\n",ValBuf[i*2+0],ValBuf[i*2+1]);
+//				HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+//				f_puts(chars_buf, &fil);
+//			}
+//			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//			for (unsigned int i = 0; i < n_wrong_points; ++i) {
+//				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+//				f_puts("Inf,Inf\n", &fil);
+//			}
+//			n_points=0;
+//			n_wrong_points=0;
+//			n_scans=0;
+//			//Limpiamos el buffer Rx del Uart
+//			UART1buf_flushRx();
+//			/************************************/
+//			/*Volvemos a sincronizar con la data*/
+//			/************************************/
+//			UART1buf_putn(SCAN_REQUEST,2);
+//			//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+//			for (int i=0;i<7;i++){
+//				while(UART1buf_peek()<0);
+//				if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+//					LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//					//Enviar nuevamente el comando
+//
+//					//Analizar si está en protección
+//					while(1);
+//				}
+//			}
+//			//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
+//			while(1){
+//				while(UART1buf_peek()<0);
+//				/****Decodificamos la bandera Flag S****/
+//				if ((UART1buf_peek()&0x03)==(0x01)){
+//					//Leemos el quality
+//					UART1buf_getc();
+//					/****Decodificamos el checkbit****/
+//					while(UART1buf_peek()<0);
+//					if (UART1buf_peek()&0x01){
+//						/****Decodificamos el Angle****/
+//						//Desplazamos los bits
+//						temp=(UART1buf_getc()>>1)&0x7F;
+//						while(UART1buf_peek()<0);
+//						temp|=(UART1buf_getc()<<7);
+//						angle=(float)temp/64.0;
+//						angle=angle*M_PI/180.0;
+//						/****Decodificamos la distancia****/
+//						//Desplazamos los bits
+//						while(UART1buf_peek()<0);
+//						temp=UART1buf_getc();
+//						while(UART1buf_peek()<0);
+//						temp|=(UART1buf_getc()<<8);
+//						distance=(float)temp/4.0;
+//						//Procedemos a convertir en coordenadas cartesianas
+//						ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
+//						ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
+//						n_points++;
+//						break;
+//					}else{
+//						//Es dato errado
+//						for (int i=0;i<3;i++){
+//							UART1buf_getc();
+//							while(UART1buf_peek()<0);
+//						}
+//						UART1buf_getc();
+//					}
+//				}else{
+//					//No sirve este dato
+//					for (int i=0;i<4;i++){
+//						UART1buf_getc();
+//						while(UART1buf_peek()<0);
+//					}
+//					UART1buf_getc();
+//				}
+//			}
+//			HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//		}
+//		//Verificamos que se presionó el botón
+//		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
+//			HAL_Delay(50);
+//			//Cerramos el archivo
+//			f_close(&fil);
+//			//Salimos del while
+//			break;
+//		}
+//		//Guardamos el punto en el ValBuf
+//		while(UART1buf_peek()<0);
+//		if (((UART1buf_peek()&0x03)==0x02)||((UART1buf_peek()&0x03)==0x01)){
+//			if ((UART1buf_peek()&0x03)==0x01){
+//				//Estamos ante un nuevo SCAN
+//				n_scans++;
+//			}
+//			//Leemos el Quality
+//			UART1buf_getc();
+//			/****Decodificamos el checkbit****/
+//			while(UART1buf_peek()<0);
+//			if (UART1buf_peek()&0x01){
+//				/****Decodificamos el Angle****/
+//				//Desplazamos los bits
+//				temp=(UART1buf_getc()>>1)&0x7F;
+//				while(UART1buf_peek()<0);
+//				temp|=(UART1buf_getc()<<7);
+//				angle=(float)temp/64.0;
+//				angle=angle*M_PI/180.0;
+//				/****Decodificamos la distancia****/
+//				//Desplazamos los bits
+//				while(UART1buf_peek()<0);
+//				temp=UART1buf_getc();
+//				while(UART1buf_peek()<0);
+//				temp|=(UART1buf_getc()<<8);
+//				distance=(float)temp/4.0;
+//				//Procedemos a convertir en coordenadas cartesianas
+//				ValBuf[n_points*2+0]=distance*cosf(angle+M_PI_2);
+//				ValBuf[n_points*2+1]=distance*sinf(angle+M_PI_2);
+//				n_points++;
+//			}else{
+//				//Dato errado
+//				n_wrong_points++;
+//			}
+//		}else{
+//			//Dato errado
+//			n_wrong_points++;
+//		}
+//	}
+//	/* Unmount SDCARD */
+//	while(f_mount(NULL, "/", 1)!= FR_OK);
+//	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+//	//Mandamos el comando de STOP
+//	UART1buf_putn(STOP_REQUEST, 2);
+//	//Detenemos el motor
+//	setMotorDutyCycle(0);
+//	HAL_Delay(2);
+//	//Borramos data del buffer
+//	UART1buf_flushRx();
+//	//Enviamos "fin de SAVE_SCAN_DATA"
+//	LPUART1buf_puts ("Fin de la operación\n\r");
+//}
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
