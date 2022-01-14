@@ -40,7 +40,6 @@
 #define STOP_RPL            0x25
 #define RESET_RPL           0x40
 #define SCAN_RPL            0x20
-#define EXPRESS_SCAN_RPL    0x82
 #define FORCE_SCAN_RPL      0x21
 #define GET_INFO_RPL        0x50
 #define GET_HEALTH_RPL      0x52
@@ -68,18 +67,21 @@ TIM_HandleTypeDef htim1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-char MainBuf[MainBuf_SIZE];
-//float ValBuf[4000];
+//char MainBuf[MainBuf_SIZE];
+//char MainBuf[MainBuf_SIZE];
+float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
 const uint8_t SCAN_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x05,0x00,0x00,0x40,0x81};
+const uint8_t EXPRESS_SCAN_REQUEST[9]={START_FLAG_1,0x82,0x05,0x00,0x00,0x00,0x00,0x00,0x22};
+const uint8_t EXPRESS_SCAN_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x54,0x00,0x00,0x40,0x82};
 const uint8_t GET_HEALTH_REQUEST[2]={START_FLAG_1,GET_HEALTH_RPL};
 const uint8_t GET_HEALTH_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x03,0x00,0x00,0x00,0x06};
 const uint8_t GET_INFO_REQUEST[2]={START_FLAG_1,GET_INFO_RPL};
-const uint8_t GET_INFO_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x4,0x00,0x00,0x00,0x04};
-const uint8_t EXPRESS_SCAN_REQUEST[7]={START_FLAG_1,EXPRESS_SCAN_RPL};
-
+const uint8_t GET_INFO_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x14,0x00,0x00,0x00,0x04};
+const uint8_t GET_SAMPLERATE_REQUEST[2]={START_FLAG_1,GET_SAMPLERATE_RPL};
+const uint8_t GET_SAMPLERATE_DESCRIPTOR[7]={START_FLAG_1,START_FLAG_2,0x4,0x00,0x00,0x00,0x15};
 const uint8_t FORCE_SCAN_REQUEST[7]={START_FLAG_1,FORCE_SCAN_RPL};
 
 /*Variables involucradas para la SD*/
@@ -102,7 +104,6 @@ static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
-
 void add_theta_rho_to_StringBuf (char *p,float theta,float rho,unsigned int *pointer_n_chars){
 	int int_part,k,ten_pow,temp_int,index=pointer_n_chars[0];
 		/*Iniciamos con el x*/
@@ -196,10 +197,6 @@ void add_theta_rho_to_StringBuf (char *p,float theta,float rho,unsigned int *poi
 		//Actualizamos el valor de la cantidad de caracteres
 		pointer_n_chars[0]=index;
 }
-
-
-
-
 void add_xy_to_StringBuf (char *p,float x,float y,unsigned int *pointer_n_chars){
 	int int_part,k,ten_pow,temp_int,index=pointer_n_chars[0];
 	/*Iniciamos con el x*/
@@ -294,6 +291,11 @@ void add_xy_to_StringBuf (char *p,float x,float y,unsigned int *pointer_n_chars)
 	//Actualizamos el valor de la cantidad de caracteres
 	pointer_n_chars[0]=index;
 }
+
+
+
+
+
 void setMotorDutyCycle(float duty){
 	HAL_TIM_PWM_Stop(&htim1, TIM_CHANNEL_1);
 	HAL_Delay(3);
@@ -322,186 +324,618 @@ void SEND_RESET_REQUEST(){
 	//Limpiamos la data basura
 	UART1buf_flushRx();
 }
-
-void SAVE_SCAN_DATA(){
-	//Define variables
-	uint16_t temp,init;
-	float angle,distance,x,y;
-	unsigned int n_points=0,n_wrong_points=0;
-	char C,S,chars_buf[30];
-	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
-	f_unlink("/data.csv");
-	//Ahora lo creamos
-	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
-	//Escribimos la primera línea
-	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
-	//Ahora encendemos el motor
-	setMotorDutyCycle(60);
-	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-	//HAL_Delay(70);
-	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-	//Limpiamos el buffer de Recepción
-	UART1buf_flushRx();
+void SEND_GET_SAMPLERATE(){
+	unsigned int temp;
+	char charBuf[40];
 	//Enviamos el comando por uart
-	UART1buf_putn(SCAN_REQUEST,2);
+	LPUART1buf_puts("Enviando comando GET_SAMPLERATE\n\r");
+	UART1buf_putn(GET_SAMPLERATE_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
 		while(UART1buf_peek()<0);
-		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+		if (GET_SAMPLERATE_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
 			while(1);
 		}
 	}
-	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
-	while(1){
+	//Recibimos el T standard
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	temp=(UART1buf_getc()<<8)|temp;
+	//enviamos el Tstandar
+	sprintf(charBuf,"Tiempo standard: %d us\n\r",temp);
+	//Recibimos el T express
+	LPUART1buf_puts(charBuf);
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	temp=(UART1buf_getc()<<8)|temp;
+	//enviamos el Texpress
+	sprintf(charBuf,"Tiempo express: %d us\n\r",temp);
+	LPUART1buf_puts(charBuf);
+	HAL_Delay(50);
+}
+void SEND_GET_HEALTH(){
+	unsigned int temp;
+	char charBuf[40];
+	//Enviamos el comando por uart
+	LPUART1buf_puts("Enviando comando GET_HEALTH\n\r");
+	UART1buf_putn(GET_HEALTH_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
 		while(UART1buf_peek()<0);
-		/****Decodificamos la bandera Flag****/
-		if ((UART1buf_peek()&0x03)==(0x01)){
-			MainBuf[0]=UART1buf_getc();
-			/****Decodificamos el checkbit****/
-			while(UART1buf_peek()<0);
-			C=UART1buf_peek()&0x01;
-			MainBuf[1]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[2]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[3]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[4]=UART1buf_getc();
-			if(C){
-				init=5;
-				break;
-			}
-		}else{
-			for (int i=0;i<4;i++){
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-			}
-			UART1buf_getc();
+		if (GET_HEALTH_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
 		}
 	}
-	//Al inicio debemos leer y procesar los datos para aprovechar el delay
-	//Ahora, entramos en un bucle que solo se detendrá cuando se presione el botón Azul
-	while(1){
-		//Escribimos en el buffer principal.
-		for(unsigned int i=init;i<408*5;i++){
-			while(UART1buf_peek()<0);
-			MainBuf[i]=UART1buf_getc();
-		}
-		init=0;
-		for (unsigned int i= 0; i < 408; ++i) {
-			S=(MainBuf[i*5+0]&0x03);
-			if ((S==0x02)||(S==0x01)){
-				/*******************Inicia la sincronizacón*****************/
-				//Para sincronizar leemos 10 puntos
-				for(int z=0;z<25;z++){
-					while(UART1buf_peek()<0);
-					if((UART1buf_peek()&0x03)==(0x01)){
-						MainBuf[0]=UART1buf_getc();
-						while(UART1buf_peek()<0);
-						MainBuf[1]=UART1buf_getc();
-						//Posiblemente es el inicio de un SCAN
-						//verificamos con el checkbit
-						if(MainBuf[1]&0x01){
-							while(UART1buf_peek()<0);
-							MainBuf[2]=UART1buf_getc();
-							while(UART1buf_peek()<0);
-							MainBuf[3]=UART1buf_getc();
-							while(UART1buf_peek()<0);
-							MainBuf[4]=UART1buf_getc();
-							init=5;
-							//leemos el los diez siguientes puntos para descartar y salimos del for
-							for (int j;j<40*5;j++){
-								while(UART1buf_peek()<0);
-								UART1buf_getc();
-							}
-						}else{
-							UART1buf_getc();
-							while(UART1buf_peek()<0);
-							UART1buf_getc();
-							while(UART1buf_peek()<0);
-							UART1buf_getc();
-							while(UART1buf_peek()<0);
-							UART1buf_getc();
-							while(UART1buf_peek()<0);
-							UART1buf_getc();
-						}
-					}
-					else{
-						UART1buf_getc();
-						while(UART1buf_peek()<0);
-						UART1buf_getc();
-						while(UART1buf_peek()<0);
-						UART1buf_getc();
-						while(UART1buf_peek()<0);
-						UART1buf_getc();
-						while(UART1buf_peek()<0);
-						UART1buf_getc();
-					}
-				}
-				/****************Terminó la sincronización******************/
-				/****Decodificamos el checkbit****/
-				if (MainBuf[i*5+1]&0x01){
-					/****Decodificamos el Angle****/
-					//Desplazamos los bits
-					temp=(MainBuf[i*5+1]>>1)&0x7F;
-					temp|=(MainBuf[i*5+2]<<7);
-					angle=(float)temp/64.0;
-					angle=angle*M_PI/180.0;
-					/****Decodificamos la distancia****/
-					//Desplazamos los bits
-					temp=MainBuf[i*5+3];
-					temp|=(MainBuf[i*5+4]<<8);
-					distance=(float)temp/4.0;
-					///Procedemos a convertir en coordenadas cartesianas
-					x=distance*cosf(angle+M_PI_2);
-					y=distance*sinf(angle+M_PI_2);
-					//Realizamos la conversión float a string
-					sprintf(chars_buf,"%.3f,%.3f\n",x,y);
-					//escribimos en la SD
-					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-					f_puts(chars_buf, &fil);
-					//n_points++;
-				}else{
-					//Dato errado
-					//n_wrong_points++;
-					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-					f_puts("NaN,NaN", &fil);
-				}
-			}else{
-				//Dato errado
-				//n_wrong_points++;
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts("Inf,Inf\n", &fil);
-			}
-		}
-		//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
-		//Verificamos que se presionó el botón
-		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
-			HAL_Delay(50);
-			//Cerramos el archivo
-			f_close(&fil);
-			//Salimos del while
-			break;
+	//Recibimos el status
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	if (temp==0){
+		LPUART1buf_puts("Todo en orden!\n\r");
+		while(UART1buf_peek()<0);
+		UART1buf_getc();
+		while(UART1buf_peek()<0);
+		UART1buf_getc();
+	}
+	//Warning
+	else if (temp==1){
+		LPUART1buf_puts("Advertencia: ");
+		while(UART1buf_peek()<0);
+		temp=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		temp=(UART1buf_getc()<<8)|temp;
+		sprintf(charBuf,"code %d\n\r",temp);
+		LPUART1buf_puts(charBuf);
+
+	}
+	//
+	else{
+		LPUART1buf_puts("Error: ");
+		while(UART1buf_peek()<0);
+		temp=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		temp=(UART1buf_getc()<<8)|temp;
+		sprintf(charBuf,"code %d\n\r",temp);
+		LPUART1buf_puts(charBuf);
+	}
+	HAL_Delay(50);
+}
+void SEND_GET_LIDAR_CONF(){
+	/*Realizaremos varios request*/
+	uint8_t charBuf[40];
+	/***************************/
+	//Enviamos el comando por uart
+	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_TYPICAL\n\r");
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=0x84;
+	charBuf[2]=0x04;//tamaño
+	charBuf[3]=0x00;//type
+	charBuf[4]=0x00;//type
+	charBuf[5]=0x00;//type
+	charBuf[6]=0x7C;//type
+	charBuf[7]=0x59;//checksum
+	UART1buf_putn(charBuf,8);
+	//Definimos el descriptor y el tipo
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=START_FLAG_2;
+	charBuf[2]=0x04;//tamaño del request
+	charBuf[3]=0x00;
+	charBuf[4]=0x00;
+	charBuf[5]=0x00;
+	charBuf[6]=0x20;
+	charBuf[7]=0x00;//type
+	charBuf[8]=0x00;//type
+	charBuf[9]=0x00;//type
+	charBuf[10]=0x7C;//type
+
+	//Comenzamos a recibir los primeros 7+4 valores y verificamos si hay error
+	for (int i=0;i<11;i++){
+		while(UART1buf_peek()<0);
+		if (charBuf[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error 0\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
 		}
 	}
-	/* Unmount SDCARD */
-	while(f_mount(NULL, "/", 1)!= FR_OK);
-	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
-	//Mandamos el comando de STOP
-	UART1buf_putn(STOP_REQUEST, 2);
-	//Detenemos el motor
-	setMotorDutyCycle(0);
-	HAL_Delay(2);
-	//Borramos data del buffer
-	UART1buf_flushRx();
-	//Enviamos "fin de SAVE_SCAN_DATA"
-	LPUART1buf_puts ("Fin de la operación\n\r");
+	LPUART1buf_puts("No value received\n\r");
+	//while(UART1buf_peek()<0);
+	//temp=UART1buf_getc();
+	//while(UART1buf_peek()<0);
+	//temp=(UART1buf_getc()<<8)|temp;
+	//sprintf(charBuf,"ID: %d \n\r",temp);
+	//LPUART1buf_puts(charBuf);
+	HAL_Delay(50);
+	/***************************/
+	//Enviamos el comando por uart
+	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_COUNT\n\r");
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=0x84;
+	charBuf[2]=0x04;//tamaño
+	charBuf[3]=0x00;//type
+	charBuf[4]=0x00;//type
+	charBuf[5]=0x00;//type
+	charBuf[6]=0x70;//type
+	charBuf[7]=0x55;//checksum
+	UART1buf_putn(charBuf,8);
+	//Definimos el descriptor y el tipo
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=START_FLAG_2;
+	charBuf[2]=0x04;//tamaño response
+	charBuf[3]=0x00;
+	charBuf[4]=0x00;
+	charBuf[5]=0x00;
+	charBuf[6]=0x20;
+	charBuf[7]=0x00;//type
+	charBuf[8]=0x00;//type
+	charBuf[9]=0x00;//type
+	charBuf[10]=0x70;//type
+
+	//Comenzamos a recibir los primeros 7+4 valores y verificamos si hay error
+	for (int i=0;i<11;i++){
+		while(UART1buf_peek()<0);
+		if (charBuf[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error 1\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	LPUART1buf_puts("No value received\n\r");
+	//LPUART1buf_puts("N. modos: 0");
+	//while(UART1buf_peek()<0);
+	//temp=UART1buf_getc();
+	//while(UART1buf_peek()<0);
+	//temp=(UART1buf_getc()<<8)|temp;
+	//sprintf(charBuf,"%d\n\r",temp-1);
+	//LPUART1buf_puts(charBuf);
+	HAL_Delay(50);
+	/***************************/
+	//Enviamos el comando por uart
+	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_US_PER_SAMPLE\n\r");
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=0x84;
+	charBuf[2]=0x06;//tamaño
+	charBuf[3]=0x00;//type
+	charBuf[4]=0x00;//type
+	charBuf[5]=0x00;//type
+	charBuf[6]=0x71;//type
+	charBuf[7]=0x00;//payload
+	charBuf[8]=0x00;//payload
+	charBuf[9]=0x56;//checksum
+	UART1buf_putn(charBuf,10);
+	//Definimos el descriptor y el tipo
+	charBuf[0]=START_FLAG_1;
+	charBuf[1]=START_FLAG_2;
+	charBuf[2]=0x04;//tamaño del request
+	charBuf[3]=0x00;
+	charBuf[4]=0x00;
+	charBuf[5]=0x00;
+	charBuf[6]=0x20;
+	charBuf[7]=0x00;//type
+	charBuf[8]=0x00;//type
+	charBuf[9]=0x00;//type
+	charBuf[10]=0x71;//type
+
+	//Comenzamos a recibir los primeros 7+4 valores y verificamos si hay error
+	for (int i=0;i<11;i++){
+		while(UART1buf_peek()<0);
+		if (charBuf[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error 2\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	LPUART1buf_puts("No value received\n\r...\n\r");
+	//while(UART1buf_peek()<0);
+	//temp=UART1buf_getc();
+	//while(UART1buf_peek()<0);
+	//temp=(UART1buf_getc()<<8)|temp;
+	//while(UART1buf_peek()<0);
+	//temp=(UART1buf_getc()<<8)|temp;
+	//while(UART1buf_peek()<0);
+	//temp=(UART1buf_getc()<<8)|temp;
+	//sprintf(charBuf,"%d \n\r",temp);
+	//LPUART1buf_puts(charBuf);
+	HAL_Delay(50);
+}
+uint8_t  BinToAsc(uint8_t  BinValue)
+{
+	//tomamos los 4 bits menos significativos
+    BinValue &= 0x0F;
+    //hacemos la conversion
+    if(BinValue > 9) BinValue += 7;
+    return(BinValue + '0');
+}
+void SEND_GET_INFO(){
+	unsigned int temp,temp_aux_1;
+	char charBuf[40];
+	//Enviamos el comando por uart
+	LPUART1buf_puts("Enviando comando GET_INFO\n\r");
+	UART1buf_putn(GET_INFO_REQUEST,2);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (GET_INFO_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	//Recibimos el modelo
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	sprintf(charBuf,"modelo: %d\n\r",temp);
+	LPUART1buf_puts(charBuf);
+	while(UART1buf_peek()<0);
+	temp_aux_1=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	sprintf(charBuf,"firmware: %d.%d\n\r",temp,temp_aux_1);
+	LPUART1buf_puts(charBuf);
+	while(UART1buf_peek()<0);
+	temp=UART1buf_getc();
+	sprintf(charBuf,"hardware: %d\n\r",temp);
+	LPUART1buf_puts(charBuf);
+	LPUART1buf_puts("Serial number: ");
+	for (int z=0;z<16;z++){
+		while(UART1buf_peek()<0);
+		temp=UART1buf_getc();
+		charBuf[z*2+0]=BinToAsc((temp>>4));
+		charBuf[z*2+1]=BinToAsc(temp);
+	}
+	charBuf[32]='\0';
+	LPUART1buf_puts(charBuf);
+	LPUART1buf_puts("\n\r");
+	HAL_Delay(50);
 }
 
+void SEND_EXPRESS_SCAN(){
+	uint8_t sync,ChkSum_lidar,ChkSum;
+	uint8_t dtheta_1,dtheta_2;
+	uint16_t start_angle_q6,dist_1,dist_2;
+	//bool S;
+	float wi,wip1,angle,distance;//x,y;
+	//Ahora encendemos el motor
+	setMotorDutyCycle(60);
+	UART1buf_flushRx();
+	//Enviamos el comando por uart
+	UART1buf_putn(EXPRESS_SCAN_REQUEST,9);
+	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+	for (int i=0;i<7;i++){
+		while(UART1buf_peek()<0);
+		if (EXPRESS_SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+			LPUART1buf_puts((char*)"Error EXPRESS SCAN\n");
+			//Enviar nuevamente el comando
+
+			//Analizar si está en protección
+			while(1);
+		}
+	}
+	//Procedemos a decodificar un paquete de 32 muestras del LIDAR
+	ChkSum=0;
+	while(UART1buf_peek()<0);
+	ChkSum^=UART1buf_peek();
+	sync=(UART1buf_peek()&0xF0);
+	ChkSum_lidar=UART1buf_getc()&0x0F;
+	while(UART1buf_peek()<0);
+	ChkSum^=UART1buf_peek();
+	sync|=(UART1buf_peek()>>4);
+	ChkSum_lidar|=(UART1buf_getc()<<4);
+	while(UART1buf_peek()<0);
+	ChkSum^=UART1buf_peek();
+	start_angle_q6=UART1buf_getc();
+	while(UART1buf_peek()<0);
+	ChkSum^=UART1buf_peek();
+	S=UART1buf_peek()>>7;
+	start_angle_q6|=(UART1buf_getc()<<8)&0x7F;
+	wi=(float)start_angle_q6/64.0;
+	//Debemos analizar la siguiente banderaif (S)
+	if (sync!=0xA5){
+		//Procedemos a recibir las 16 cabinas copn 32 muestras
+		for (int k=0;k<16;k++){
+			while(UART1buf_peek()<0);
+			ChkSum^=UART1buf_peek();
+			dtheta_1=((UART1buf_peek())<<4);
+			dist_1=(UART1buf_getc()>>2);
+			while(UART1buf_peek()<0);
+			ChkSum^=UART1buf_peek();
+			dist_1|=(UART1buf_getc()>>6);
+			while(UART1buf_peek()<0);
+			ChkSum^=UART1buf_peek();
+			dtheta_2=((UART1buf_peek())<<4);
+			dist_2=(UART1buf_getc()>>2);
+			while(UART1buf_peek()<0);
+			ChkSum^=UART1buf_peek();
+			dist_2|=(UART1buf_getc()>>6);
+			while(UART1buf_peek()<0);
+			ChkSum^=UART1buf_peek();
+			dtheta_1|=UART1buf_peek()&0x0F;
+			dtheta_2|=(UART1buf_getc()>>4);
+			ValBuf[k*4+0]=dtheta_1;
+			ValBuf[k*4+1]=dist_1;
+			ValBuf[k*4+2]=dtheta_2;
+			ValBuf[k*4+3]=dist_2;
+		}
+		//Chequeamos si el Checksum es correcto.
+
+	}else{
+		//error comunicacion
+		while(1);
+	}
+	//Para poder procesar necesitamos el ángulo del siguiente estado wi+1
+	while(1){
+		ChkSum=0;
+		while(UART1buf_peek()<0);
+		ChkSum^=UART1buf_peek();
+		sync=(UART1buf_peek()&0xF0);
+		ChkSum_lidar=UART1buf_getc()&0x0F;
+		while(UART1buf_peek()<0);
+		ChkSum^=UART1buf_peek();
+		sync|=(UART1buf_peek()>>4);
+		ChkSum_lidar|=(UART1buf_getc()<<4);
+		while(UART1buf_peek()<0);
+		ChkSum^=UART1buf_peek();
+		start_angle_q6=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		ChkSum^=UART1buf_peek();
+		S=UART1buf_peek()>>7;
+		start_angle_q6|=(UART1buf_getc()<<8)&0x7F;
+		wip1=(float)start_angle_q6/64.0;
+		//Debemos analizar sync,ChkSum y S
+
+		//...Continuar aqui. Falta decodificar la data con el AngleDiff
+
+		//if (butonpressed){
+		//	break
+		//}
+	}
+
+
+
+
+}
+
+/***************************************************************/
+/** @brief Proponemos usar un buffer que almacene los valores
+ * float de x e y. Para luego, de tener un SCAN. Enviar los datos
+ * a la SD. El envío a la tarjeta SD será cada 100 ms aprox, es
+ * decir. Luego de completar un SCAN (que se verifica con el S
+ * flag), enviamos archivos.
+ *
+ *
+ */
+//void SAVE_DATA_bufdouble(){
+//	//Define variables
+//	float angle,distance,x,y;
+//	unsigned int index=0;
+//	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
+//	f_unlink("/data.csv");
+//	//Ahora lo creamos
+//	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+//	//Escribimos la primera línea
+//	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
+//	//Ahora encendemos el motor
+//	setMotorDutyCycle(60);
+//	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//	//HAL_Delay(70);
+//	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+//	//Limpiamos el buffer de Recepción
+//	UART1buf_flushRx();
+//	//Enviamos el comando por uart
+//	UART1buf_putn(SCAN_REQUEST,2);
+//	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+//	for (int i=0;i<7;i++){
+//		while(UART1buf_peek()<0);
+//		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+//			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//			//Enviar nuevamente el comando
+//
+//			//Analizar si está en protección
+//			while(1);
+//		}
+//	}
+//	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
+//
+//
+//
+//}
+///************************************************************/
+
+///void SAVE_SCAN_DATA(){
+///	//Define variables
+///	uint16_t temp,init;
+///	float angle,distance,x,y;
+///	unsigned int n_points=0,n_wrong_points=0;
+///	char C,S,chars_buf[30];
+///	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
+///	f_unlink("/data.csv");
+///	//Ahora lo creamos
+///	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+///	//Escribimos la primera línea
+///	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
+///	//Ahora encendemos el motor
+///	setMotorDutyCycle(60);
+///	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+///	//HAL_Delay(70);
+///	//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+///	//Limpiamos el buffer de Recepción
+///	UART1buf_flushRx();
+///	//Enviamos el comando por uart
+///	UART1buf_putn(SCAN_REQUEST,2);
+///	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
+///	for (int i=0;i<7;i++){
+///		while(UART1buf_peek()<0);
+///		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
+///			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+///			//Enviar nuevamente el comando
+///
+///			//Analizar si está en protección
+///			while(1);
+///		}
+///	}
+///	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
+///	while(1){
+///		while(UART1buf_peek()<0);
+///		/****Decodificamos la bandera Flag****/
+///		if ((UART1buf_peek()&0x03)==(0x01)){
+///			MainBuf[0]=UART1buf_getc();
+///			/****Decodificamos el checkbit****/
+///			while(UART1buf_peek()<0);
+///			C=UART1buf_peek()&0x01;
+///			MainBuf[1]=UART1buf_getc();
+///			while(UART1buf_peek()<0);
+///			MainBuf[2]=UART1buf_getc();
+///			while(UART1buf_peek()<0);
+///			MainBuf[3]=UART1buf_getc();
+///			while(UART1buf_peek()<0);
+///			MainBuf[4]=UART1buf_getc();
+///			if(C){
+///				init=5;
+///				break;
+///			}
+///		}else{
+///			for (int i=0;i<4;i++){
+///				UART1buf_getc();
+///				while(UART1buf_peek()<0);
+///			}
+///			UART1buf_getc();
+///		}
+///	}
+///	//Al inicio debemos leer y procesar los datos para aprovechar el delay
+///	//Ahora, entramos en un bucle que solo se detendrá cuando se presione el botón Azul
+///	while(1){
+///		//Escribimos en el buffer principal.
+///		for(unsigned int i=init;i<408*5;i++){
+///			while(UART1buf_peek()<0);
+///			MainBuf[i]=UART1buf_getc();
+///		}
+///		init=0;
+///		for (unsigned int i= 0; i < 408; ++i) {
+///			S=(MainBuf[i*5+0]&0x03);
+///			if ((S==0x02)||(S==0x01)){
+///				/*******************Inicia la sincronizacón*****************/
+///				//Para sincronizar leemos 10 puntos
+///				for(int z=0;z<25;z++){
+///					while(UART1buf_peek()<0);
+///					if((UART1buf_peek()&0x03)==(0x01)){
+///						MainBuf[0]=UART1buf_getc();
+///						while(UART1buf_peek()<0);
+///						MainBuf[1]=UART1buf_getc();
+///						//Posiblemente es el inicio de un SCAN
+///						//verificamos con el checkbit
+///						if(MainBuf[1]&0x01){
+///							while(UART1buf_peek()<0);
+///							MainBuf[2]=UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							MainBuf[3]=UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							MainBuf[4]=UART1buf_getc();
+///							init=5;
+///							//leemos el los diez siguientes puntos para descartar y salimos del for
+///							for (int j;j<40*5;j++){
+///								while(UART1buf_peek()<0);
+///								UART1buf_getc();
+///							}
+///						}else{
+///							UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							UART1buf_getc();
+///							while(UART1buf_peek()<0);
+///							UART1buf_getc();
+///						}
+///					}
+///					else{
+///						UART1buf_getc();
+///						while(UART1buf_peek()<0);
+///						UART1buf_getc();
+///						while(UART1buf_peek()<0);
+///						UART1buf_getc();
+///						while(UART1buf_peek()<0);
+///						UART1buf_getc();
+///						while(UART1buf_peek()<0);
+///						UART1buf_getc();
+///					}
+///				}
+///				/****************Terminó la sincronización******************/
+///				/****Decodificamos el checkbit****/
+///				if (MainBuf[i*5+1]&0x01){
+///					/****Decodificamos el Angle****/
+///					//Desplazamos los bits
+///					temp=(MainBuf[i*5+1]>>1)&0x7F;
+///					temp|=(MainBuf[i*5+2]<<7);
+///					angle=(float)temp/64.0;
+///					angle=angle*M_PI/180.0;
+///					/****Decodificamos la distancia****/
+///					//Desplazamos los bits
+///					temp=MainBuf[i*5+3];
+///					temp|=(MainBuf[i*5+4]<<8);
+///					distance=(float)temp/4.0;
+///					///Procedemos a convertir en coordenadas cartesianas
+///					x=distance*cosf(angle+M_PI_2);
+///					y=distance*sinf(angle+M_PI_2);
+///					//Realizamos la conversión float a string
+///					sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+///					//escribimos en la SD
+///					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+///					f_puts(chars_buf, &fil);
+///					//n_points++;
+///				}else{
+///					//Dato errado
+///					//n_wrong_points++;
+///					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+///					f_puts("NaN,NaN", &fil);
+///				}
+///			}else{
+///				//Dato errado
+///				//n_wrong_points++;
+///				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+///				f_puts("Inf,Inf\n", &fil);
+///			}
+///		}
+///		//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
+///		//Verificamos que se presionó el botón
+///		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
+///			HAL_Delay(50);
+///			//Cerramos el archivo
+///			f_close(&fil);
+///			//Salimos del while
+///			break;
+///		}
+///	}
+///	/* Unmount SDCARD */
+///	while(f_mount(NULL, "/", 1)!= FR_OK);
+///	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+///	//Mandamos el comando de STOP
+///	UART1buf_putn(STOP_REQUEST, 2);
+///	//Detenemos el motor
+///	setMotorDutyCycle(0);
+///	HAL_Delay(2);
+///	//Borramos data del buffer
+///	UART1buf_flushRx();
+///	//Enviamos "fin de SAVE_SCAN_DATA"
+///	LPUART1buf_puts ("Fin de la operación\n\r");
+///}
+///
 //void SAVE_SCAN_DATA_old(){
 //	//Define variables
 //	uint16_t temp;
@@ -775,11 +1209,11 @@ int main(void)
   //Mount SD card
   LPUART1buf_puts("Intentando mounted SD CARD...\n\r");
   HAL_Delay (500);
-  while (f_mount(&fs,"/", 1) != FR_OK);
+  	  //while (f_mount(&fs,"/", 1) != FR_OK);
   LPUART1buf_puts("SD CARD mounted successfully...\n\r");
   /*************** Card capacity details ********************/
   /* Check free space */
-  while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
+  	  //while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
   sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
   LPUART1buf_puts(buffer);
@@ -794,6 +1228,12 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+	  SEND_GET_SAMPLERATE();
+	  SEND_GET_HEALTH();
+	  SEND_GET_LIDAR_CONF();
+	  SEND_GET_INFO();
+	  SEND_EXPRESS_SCAN();
+
 	  //Esperamos a que se presione el Boton
 	  LPUART1buf_puts((char*)"Iniciamos:\n\r");
 	  while(!HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4));
