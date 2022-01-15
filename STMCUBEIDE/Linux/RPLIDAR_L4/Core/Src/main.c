@@ -965,7 +965,7 @@ void SAVE_SCAN_DATA(){
 		while(UART1buf_peek()<0);
 		/****Decodificamos la bandera Flag****/
 		S=(UART1buf_peek()&0x03);
-		if (S==(0x01)){
+		if ((S==(0x01))||(S==(0x02))){
 			MainBuf[n_points*5+0]=UART1buf_getc();
 			/****Decodificamos el checkbit****/
 			while(UART1buf_peek()<0);
@@ -1349,10 +1349,11 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  SEND_GET_SAMPLERATE();
-	  SEND_GET_HEALTH();
-	  SEND_GET_LIDAR_CONF();
-	  SEND_GET_INFO();
+	  //SEND_GET_SAMPLERATE();
+	  //SEND_GET_HEALTH();
+	  //SEND_GET_LIDAR_CONF();
+	  //SEND_GET_INFO();
+
 	  //SEND_EXPRESS_SCAN();
 
 	  //Esperamos a que se presione el Boton
