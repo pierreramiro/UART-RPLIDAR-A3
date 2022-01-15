@@ -68,8 +68,8 @@ UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 //char MainBuf[MainBuf_SIZE];
-char MainBuf[MainBuf_SIZE];
-//float ValBuf[4000];
+//char MainBuf[MainBuf_SIZE];
+float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
@@ -903,7 +903,7 @@ void SAVE_SCAN_DATA(){
 	uint16_t temp,init;
 	float angle,distance,x,y;
 	unsigned int n_points=0,n_wrong_points=0;
-	char C,S,chars_buf[40];
+	char C,S,chars_buf[30];
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/data.csv");
 	//Ahora lo creamos
@@ -947,8 +947,7 @@ void SAVE_SCAN_DATA(){
 			while(UART1buf_peek()<0);
 			MainBuf[4]=UART1buf_getc();
 			if(C){
-				n_points++;
-				init=0;
+				init=5;
 				break;
 			}
 		}else{
@@ -962,81 +961,96 @@ void SAVE_SCAN_DATA(){
 	//Al inicio debemos leer y procesar los datos para aprovechar el delay
 	//Ahora, entramos en un bucle que solo se detendrá cuando se presione el botón Azul
 	while(1){
-		while(UART1buf_peek()<0);
-		/****Decodificamos la bandera Flag****/
-		S=(UART1buf_peek()&0x03);
-		if (S==(0x01)){
-			MainBuf[n_points*5+0]=UART1buf_getc();
-			/****Decodificamos el checkbit****/
+		//Escribimos en el buffer principal.
+		for(unsigned int i=init;i<408*5;i++){
 			while(UART1buf_peek()<0);
-			C=UART1buf_peek()&0x01;
-			MainBuf[n_points*5+1]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[n_points*5+2]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[n_points*5+3]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[n_points*5+4]=UART1buf_getc();
-			if(C){
-				n_points++;
-			}else{
-				n_wrong_points++;
-			}
-			if(S){
-				init=1;
-			}
-		}else{
-			for (int i=0;i<4;i++){
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-			}
-			UART1buf_getc();
+			MainBuf[i]=UART1buf_getc();
 		}
-		if(init!=0){
-			//Si terminamos un SCAN procesamos y enviamos a la SD
-			init=0;
-			//procesamos data
-			for(int z=0;z<n_points-1;z++){
-				temp=(MainBuf[z*5+1]>>1)&0x7F;
-				temp|=(MainBuf[z*5+2]<<7);
-				angle=(float)temp/64.0;
-				angle=angle*M_PI/180.0;
-				/****Decodificamos la distancia****/
-				//Desplazamos los bits
-				temp=MainBuf[z*5+3];
-				temp|=(MainBuf[z*5+4]<<8);
-				/****Decodificamos la distancia****/
-				//Desplazamos los bits
-				while(UART1buf_peek()<0);
-				temp=UART1buf_getc();
-				while(UART1buf_peek()<0);
-				temp|=(UART1buf_getc()<<8);
-				distance=(float)temp/4.0;
-				//Procedemos a convertir en coordenadas cartesianas
-				x=distance*cosf(angle+M_PI_2);
-				y=distance*sinf(angle+M_PI_2);
-				//Realizamos la conversión float a string
-				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
-				//escribimos en la SD
+		init=0;
+		for (unsigned int i= 0; i < 408; ++i) {
+			S=(MainBuf[i*5+0]&0x03);
+			if ((S==0x02)||(S==0x01)){
+				/*******************Inicia la sincronizacón*****************/
+				//Para sincronizar leemos 10 puntos
+				for(int z=0;z<25;z++){
+					while(UART1buf_peek()<0);
+					if((UART1buf_peek()&0x03)==(0x01)){
+						MainBuf[0]=UART1buf_getc();
+						while(UART1buf_peek()<0);
+						MainBuf[1]=UART1buf_getc();
+						//Posiblemente es el inicio de un SCAN
+						//verificamos con el checkbit
+						if(MainBuf[1]&0x01){
+							while(UART1buf_peek()<0);
+							MainBuf[2]=UART1buf_getc();
+							while(UART1buf_peek()<0);
+							MainBuf[3]=UART1buf_getc();
+							while(UART1buf_peek()<0);
+							MainBuf[4]=UART1buf_getc();
+							init=5;
+							//leemos el los diez siguientes puntos para descartar y salimos del for
+							for (int j;j<40*5;j++){
+								while(UART1buf_peek()<0);
+								UART1buf_getc();
+							}
+						}else{
+							UART1buf_getc();
+							while(UART1buf_peek()<0);
+							UART1buf_getc();
+							while(UART1buf_peek()<0);
+							UART1buf_getc();
+							while(UART1buf_peek()<0);
+							UART1buf_getc();
+							while(UART1buf_peek()<0);
+							UART1buf_getc();
+						}
+					}
+					else{
+						UART1buf_getc();
+						while(UART1buf_peek()<0);
+						UART1buf_getc();
+						while(UART1buf_peek()<0);
+						UART1buf_getc();
+						while(UART1buf_peek()<0);
+						UART1buf_getc();
+						while(UART1buf_peek()<0);
+						UART1buf_getc();
+					}
+				}
+				/****************Terminó la sincronización******************/
+				/****Decodificamos el checkbit****/
+				if (MainBuf[i*5+1]&0x01){
+					/****Decodificamos el Angle****/
+					//Desplazamos los bits
+					temp=(MainBuf[i*5+1]>>1)&0x7F;
+					temp|=(MainBuf[i*5+2]<<7);
+					angle=(float)temp/64.0;
+					angle=angle*M_PI/180.0;
+					/****Decodificamos la distancia****/
+					//Desplazamos los bits
+					temp=MainBuf[i*5+3];
+					temp|=(MainBuf[i*5+4]<<8);
+					distance=(float)temp/4.0;
+					///Procedemos a convertir en coordenadas cartesianas
+					x=distance*cosf(angle+M_PI_2);
+					y=distance*sinf(angle+M_PI_2);
+					//Realizamos la conversión float a string
+					sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+					//escribimos en la SD
+					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+					f_puts(chars_buf, &fil);
+					//n_points++;
+				}else{
+					//Dato errado
+					//n_wrong_points++;
+					while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+					f_puts("NaN,NaN", &fil);
+				}
+			}else{
+				//Dato errado
+				//n_wrong_points++;
 				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts(chars_buf, &fil);
-			}
-			n_points--;
-			MainBuf[0]=MainBuf[n_points*5+0];
-			MainBuf[1]=MainBuf[n_points*5+1];
-			MainBuf[2]=MainBuf[n_points*5+2];
-			MainBuf[3]=MainBuf[n_points*5+3];
-			MainBuf[4]=MainBuf[n_points*5+4];
-			for(int z=0;z<n_wrong_points;z++){
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-				f_puts("NaN,NaN\n", &fil);
-			}
-			n_points=1;
-			n_wrong_points=0;
-			//read aditional data to sync
-			for(int z=0;z<7*5;z++){
-				while(UART1buf_peek()<0);
-				UART1buf_getc();
+				f_puts("Inf,Inf\n", &fil);
 			}
 		}
 		//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
