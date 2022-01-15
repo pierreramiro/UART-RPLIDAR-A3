@@ -1005,6 +1005,12 @@ void SAVE_SCAN_DATA(){
 				//Desplazamos los bits
 				temp=MainBuf[z*5+3];
 				temp|=(MainBuf[z*5+4]<<8);
+				/****Decodificamos la distancia****/
+				//Desplazamos los bits
+				while(UART1buf_peek()<0);
+				temp=UART1buf_getc();
+				while(UART1buf_peek()<0);
+				temp|=(UART1buf_getc()<<8);
 				distance=(float)temp/4.0;
 				//Procedemos a convertir en coordenadas cartesianas
 				x=distance*cosf(angle+M_PI_2);
