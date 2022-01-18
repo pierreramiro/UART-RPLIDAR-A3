@@ -48,7 +48,7 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  MainBuf_SIZE 		(1<<11)//13->8192 14->16384 15->32768 16->65536
+#define  MainBuf_SIZE 		(50*5)//13->8192 14->16384 15->32768 16->65536
 #define precision 3  //precision for decimal digits
 /* USER CODE END PD */
 
@@ -63,8 +63,9 @@ SPI_HandleTypeDef hspi1;
 TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN PV */
-//char MainBuf[MainBuf_SIZE];
+// MainBuf[MainBuf_SIZE];
 char MainBuf[MainBuf_SIZE];
+//char StrBuf[1250];
 //float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
@@ -87,11 +88,12 @@ FILINFO fno;
 FRESULT fresult;  // result
 UINT br, bw;  // File read/write count
 
-/**** capacity related *****/
+// **** capacity related ***** //
 FATFS *pfs;
 DWORD fre_clust;
 uint32_t total, free_space;
-
+// *************************** //
+uint8_t opcion;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -895,16 +897,19 @@ void SEND_GET_INFO(){
 ///************************************************************/
 
 void SAVE_SCAN_DATA(){
+	if ((opcion!='1')&&(opcion!='2')&&(opcion!='3')&&(opcion!='0')){
+		return;
+	}
 	//Define variables
 	uint16_t temp,init;
-	uint16_t angle,distance;
+	float angle,distance;
 	float x,y;
 	unsigned int n_points=0,n_wrong_points=0;
-	char C,S,chars_buf[40];
+	char C,S,chars_buf[40],StrBuf[1250];
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
-	f_unlink("/data.csv");
+	f_unlink("/test.csv");
 	//Ahora lo creamos
-	while(f_open(&fil, "data.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
+	while(f_open(&fil, "test.csv", FA_OPEN_ALWAYS | FA_READ | FA_WRITE)!= FR_OK);
 	//Escribimos la primera línea
 	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
 	//Ahora encendemos el motor
@@ -957,21 +962,156 @@ void SAVE_SCAN_DATA(){
 			UART1buf_getc();
 		}
 	}
-	while(1)
+/********************************************************************/
+	while(opcion=='0'){//usando peek
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+0]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+1]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+2]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+3]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+4]=UART1buf_getc();
+		HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+		temp=(MainBuf[n_points*5+1]>>1)&0x7F;
+		temp|=(MainBuf[n_points*5+2]<<7);
+		angle=(float)temp/64.0;
+		//angle=temp;
+		angle=angle*M_PI/180.0;
+		// ******Decodificamos la distancia****  //
+		//Desplazamos los bits
+		temp=MainBuf[n_points*5+3];
+		temp|=(MainBuf[n_points*5+4]<<8);
+		distance=(float)temp/4.0;
+		//distance=temp;
+		//Procedemos a convertir en coordenadas cartesianas
+		x=distance*cosf(angle+M_PI_2);
+		y=distance*sinf(angle+M_PI_2);
+		//Realizamos la conversión float a string
+		sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+
+		if (LPUART1buf_peek()>0){
+			LPUART1buf_puts("Deteniendo SCAN\n\r");
+			//Cerramos el archivo
+			f_close(&fil);
+			//Salimos del while
+			break;
+		}
+
+
+	}
+	while(opcion=='1'){//Solo vemos el punto de inicio de SCAN
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+0]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+1]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+2]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+3]=UART1buf_getc();
+		while(UART1buf_peek()<0);
+		MainBuf[n_points*5+4]=UART1buf_getc();
+		if((MainBuf[n_points*5+0]&0x03)==0x01){
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			temp=(MainBuf[n_points*5+1]>>1)&0x7F;
+			temp|=(MainBuf[n_points*5+2]<<7);
+			angle=(float)temp/64.0;
+			//angle=temp;
+			angle=angle*M_PI/180.0;
+			// ******Decodificamos la distancia****  //
+			//Desplazamos los bits
+			temp=MainBuf[n_points*5+3];
+			temp|=(MainBuf[n_points*5+4]<<8);
+			distance=(float)temp/4.0;
+			//distance=temp;
+			//Procedemos a convertir en coordenadas cartesianas
+			x=distance*cosf(angle+M_PI_2);
+			y=distance*sinf(angle+M_PI_2);
+			//Realizamos la conversión float a string
+			sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+		}
+		if (LPUART1buf_peek()>0){
+			LPUART1buf_puts("Deteniendo SCAN\n\r");
+			//Cerramos el archivo
+			f_close(&fil);
+			//Salimos del while
+			break;
+		}
+
+
+	}
+
+	while(opcion=='2'){//Recibe y guarda
+		StrBuf[0]='\0';
+		for (int z=0;z<50;z++){
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+0]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+1]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+2]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+3]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+4]=UART1buf_getc();
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			temp=(MainBuf[n_points*5+1]>>1)&0x7F;
+			temp|=(MainBuf[n_points*5+2]<<7);
+			angle=(float)temp/64.0;
+			//angle=temp;
+			angle=angle*M_PI/180.0;
+			// ******Decodificamos la distancia****  //
+			//Desplazamos los bits
+			temp=MainBuf[n_points*5+3];
+			temp|=(MainBuf[n_points*5+4]<<8);
+			distance=(float)temp/4.0;
+			//distance=temp;
+			//Procedemos a convertir en coordenadas cartesianas
+			x=distance*cosf(angle+M_PI_2);
+			y=distance*sinf(angle+M_PI_2);
+			//Realizamos la conversión float a string
+			sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+			strcat(StrBuf,chars_buf);
+		}
+		//escribimos en la SD
+		while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+		f_puts(StrBuf, &fil);
+		//n_points++;
+		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+		if (LPUART1buf_peek()>0){
+			LPUART1buf_puts("Deteniendo SCAN\n\r");
+			//Cerramos el archivo
+			f_close(&fil);
+			//Salimos del while
+			break;
+		}
+	}
+
+
+	while(opcion=='3')//codigo Laureano
 	{
-		if(UART1buf_available()<5)
+		if(UART1buf_available()==5)
+
 		{
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
+
 		}
 		else
 		{
 
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 1);
+			//if ((UART1buf_peek()&0x03)==0x01){
+				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 1);
+			//}
 			MainBuf[n_points*5+0]=UART1buf_getc();
 			MainBuf[n_points*5+1]=UART1buf_getc();
 			MainBuf[n_points*5+2]=UART1buf_getc();
 			MainBuf[n_points*5+3]=UART1buf_getc();
 			MainBuf[n_points*5+4]=UART1buf_getc();
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
 
 /*
 			temp=(MainBuf[n_points*5+1]>>1)&0x7F;
@@ -996,14 +1136,67 @@ void SAVE_SCAN_DATA(){
 			//f_puts(chars_buf, &fil);
 			//n_points++;
 */
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
+			if (LPUART1buf_peek()>0){
+				LPUART1buf_puts("Deteniendo SCAN\n\r");
+				//Cerramos el archivo
+				f_close(&fil);
+				//Salimos del while
+				break;
+			}
 
+		}
+	}
+	while(opcion=='2'){//Recibe y guarda
+		StrBuf[0]='\0';
+		for (int z=0;z<50;z++){
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+0]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+1]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+2]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+3]=UART1buf_getc();
+			while(UART1buf_peek()<0);
+			MainBuf[n_points*5+4]=UART1buf_getc();
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			temp=(MainBuf[n_points*5+1]>>1)&0x7F;
+			temp|=(MainBuf[n_points*5+2]<<7);
+			angle=(float)temp/64.0;
+			//angle=temp;
+			angle=angle*M_PI/180.0;
+			// ******Decodificamos la distancia****  //
+			//Desplazamos los bits
+			temp=MainBuf[n_points*5+3];
+			temp|=(MainBuf[n_points*5+4]<<8);
+			distance=(float)temp/4.0;
+			//distance=temp;
+			//Procedemos a convertir en coordenadas cartesianas
+			x=distance*cosf(angle+M_PI_2);
+			y=distance*sinf(angle+M_PI_2);
+			//Realizamos la conversión float a string
+			sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+			strcat(StrBuf,chars_buf);
+		}
+		//escribimos en la SD
+		while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+		f_puts(StrBuf, &fil);
+		//n_points++;
+		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+		if (LPUART1buf_peek()>0){
+			LPUART1buf_puts("Deteniendo SCAN\n\r");
+			//Cerramos el archivo
+			f_close(&fil);
+			//Salimos del while
+			break;
 		}
 	}
 
 
 
 
+/**************************************************************/
 	//Al inicio debemos leer y procesar los datos para aprovechar el delay
 	//Ahora, entramos en un bucle que solo se detendrá cuando se presione el botón Azul
 	while(0){
@@ -1061,7 +1254,7 @@ void SAVE_SCAN_DATA(){
 				//x=distance*cosf(angle+M_PI_2);
 				//y=distance*sinf(angle+M_PI_2);
 				//Realizamos la conversión float a string
-				sprintf(chars_buf,"%d,%d\n",angle,distance);
+				sprintf(chars_buf,"%.2f,%.2f\n",angle,distance);
 				//sprintf(chars_buf,"%.3f,%.3f\n",x,y);
 				//escribimos en la SD
 				//while(f_lseek(&fil, f_size(&fil))!= FR_OK);
@@ -1088,17 +1281,15 @@ void SAVE_SCAN_DATA(){
 		}
 		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 		//Verificamos que se presionó el botón
-		if (HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4)){
-			HAL_Delay(50);
+		if (LPUART1buf_peek()>0){
+			LPUART1buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
 			break;
 		}
 	}
-	/* Unmount SDCARD */
-	while(f_mount(NULL, "/", 1)!= FR_OK);
-	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+	LPUART1buf_getc();
 	//Mandamos el comando de STOP
 	UART1buf_putn(STOP_REQUEST, 2);
 	//Detenemos el motor
@@ -1401,17 +1592,6 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-
-  while(0)
-  {
-	  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
-	  HAL_Delay(100);
-	  HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 1);
-	  HAL_Delay(100);
-
-  }
-
-
   while (1)
   {
 	  //SEND_GET_SAMPLERATE();
@@ -1423,14 +1603,29 @@ int main(void)
 
 	  //Esperamos a que se presione el Boton
 	  LPUART1buf_puts((char*)"Iniciamos:\n\r");
-	  while(!HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4));
-	  //Esperamos que se suelte
-	  while(HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_4));
+	  LPUART1buf_puts((char*)"0: usando peek\n\r");
+	  LPUART1buf_puts((char*)"1: Vemos solo puntos de inicio\n\r");
+	  LPUART1buf_puts((char*)"2: Recibe y guarda\n\r");
+	  LPUART1buf_puts((char*)"3: Codigo Lalo\n\r");
+	  while(LPUART1buf_peek()<0);
+	  opcion=LPUART1buf_getc();
+	  //LPUART1buf_flushRx();
 	  LPUART1buf_puts((char*)"Mandamos SCAN request:\n\r");
 	  //SAVE_DATA_bufdouble();
 	  SAVE_SCAN_DATA();
+
+	  LPUART1buf_puts((char*)"Desmount SD?:\n\r");
+	  while(LPUART1buf_peek()<0);
+	  opcion=LPUART1buf_getc();
+	  if(opcion=='Y')
+	  {/* Unmount SDCARD */
+		while(f_mount(NULL, "/", 1)!= FR_OK);
+		LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+		while(1);
+	  }
 	  //setMotorDutyCycle(60);
-	  while(1);/* USER CODE END WHILE */
+	  //while(1);
+	  /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
