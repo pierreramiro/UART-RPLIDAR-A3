@@ -23,7 +23,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "math.h"
-#include "uart_buf_g4.h"
+//#include "uart_buf_g4.h"
+#include  "G4uart_buf.h"
 #include "string.h"
 #include "fatfs_sd.h"
 #include "stdio.h"
@@ -316,7 +317,7 @@ void SEND_RESET_REQUEST(){
 	//Enviamos el comando por uart
 	UART1buf_putn(RESET_REQUEST,2);
 	//Esperamos a recibir la data basura
-	while(UART1buf_peek()<0);
+	while(UART1buf_available()==0);
 	//Delay >20ms para poder recibir toda la data basura
 	HAL_Delay(50);
 	//Limpiamos la data basura
@@ -326,13 +327,13 @@ void SEND_GET_SAMPLERATE(){
 	unsigned int temp;
 	char charBuf[40];
 	//Enviamos el comando por uart
-	LPUART1buf_puts("Enviando comando GET_SAMPLERATE\n\r");
+	UART2buf_puts("Enviando comando GET_SAMPLERATE\n\r");
 	UART1buf_putn(GET_SAMPLERATE_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
 		while(UART1buf_peek()<0);
 		if (GET_SAMPLERATE_DESCRIPTOR[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error\n");
+			UART2buf_puts((char*)"Error\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
@@ -347,27 +348,27 @@ void SEND_GET_SAMPLERATE(){
 	//enviamos el Tstandar
 	sprintf(charBuf,"Tiempo standard: %d us\n\r",temp);
 	//Recibimos el T express
-	LPUART1buf_puts(charBuf);
+	UART2buf_puts(charBuf);
 	while(UART1buf_peek()<0);
 	temp=UART1buf_getc();
 	while(UART1buf_peek()<0);
 	temp=(UART1buf_getc()<<8)|temp;
 	//enviamos el Texpress
 	sprintf(charBuf,"Tiempo express: %d us\n\r",temp);
-	LPUART1buf_puts(charBuf);
+	UART2buf_puts(charBuf);
 	HAL_Delay(50);
 }
 void SEND_GET_HEALTH(){
 	unsigned int temp;
 	char charBuf[40];
 	//Enviamos el comando por uart
-	LPUART1buf_puts("Enviando comando GET_HEALTH\n\r");
+	UART2buf_puts("Enviando comando GET_HEALTH\n\r");
 	UART1buf_putn(GET_HEALTH_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
 		while(UART1buf_peek()<0);
 		if (GET_HEALTH_DESCRIPTOR[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error\n");
+			UART2buf_puts((char*)"Error\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
@@ -378,7 +379,7 @@ void SEND_GET_HEALTH(){
 	while(UART1buf_peek()<0);
 	temp=UART1buf_getc();
 	if (temp==0){
-		LPUART1buf_puts("Todo en orden!\n\r");
+		UART2buf_puts("Todo en orden!\n\r");
 		while(UART1buf_peek()<0);
 		UART1buf_getc();
 		while(UART1buf_peek()<0);
@@ -386,24 +387,24 @@ void SEND_GET_HEALTH(){
 	}
 	//Warning
 	else if (temp==1){
-		LPUART1buf_puts("Advertencia: ");
+		UART2buf_puts("Advertencia: ");
 		while(UART1buf_peek()<0);
 		temp=UART1buf_getc();
 		while(UART1buf_peek()<0);
 		temp=(UART1buf_getc()<<8)|temp;
 		sprintf(charBuf,"code %d\n\r",temp);
-		LPUART1buf_puts(charBuf);
+		UART2buf_puts(charBuf);
 
 	}
 	//
 	else{
-		LPUART1buf_puts("Error: ");
+		UART2buf_puts("Error: ");
 		while(UART1buf_peek()<0);
 		temp=UART1buf_getc();
 		while(UART1buf_peek()<0);
 		temp=(UART1buf_getc()<<8)|temp;
 		sprintf(charBuf,"code %d\n\r",temp);
-		LPUART1buf_puts(charBuf);
+		UART2buf_puts(charBuf);
 	}
 	HAL_Delay(50);
 }
@@ -412,7 +413,7 @@ void SEND_GET_LIDAR_CONF(){
 	uint8_t charBuf[40];
 	/***************************/
 	//Enviamos el comando por uart
-	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_TYPICAL\n\r");
+	UART2buf_puts("RPLIDAR_CONF_SCAN_MODE_TYPICAL\n\r");
 	charBuf[0]=START_FLAG_1;
 	charBuf[1]=0x84;
 	charBuf[2]=0x04;//tamaño
@@ -439,24 +440,24 @@ void SEND_GET_LIDAR_CONF(){
 	for (int i=0;i<11;i++){
 		while(UART1buf_peek()<0);
 		if (charBuf[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error 0\n");
+			UART2buf_puts((char*)"Error 0\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
 			while(1);
 		}
 	}
-	LPUART1buf_puts("No value received\n\r");
+	UART2buf_puts("No value received\n\r");
 	//while(UART1buf_peek()<0);
 	//temp=UART1buf_getc();
 	//while(UART1buf_peek()<0);
 	//temp=(UART1buf_getc()<<8)|temp;
 	//sprintf(charBuf,"ID: %d \n\r",temp);
-	//LPUART1buf_puts(charBuf);
+	//UART2buf_puts(charBuf);
 	HAL_Delay(50);
 	/***************************/
 	//Enviamos el comando por uart
-	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_COUNT\n\r");
+	UART2buf_puts("RPLIDAR_CONF_SCAN_MODE_COUNT\n\r");
 	charBuf[0]=START_FLAG_1;
 	charBuf[1]=0x84;
 	charBuf[2]=0x04;//tamaño
@@ -483,25 +484,25 @@ void SEND_GET_LIDAR_CONF(){
 	for (int i=0;i<11;i++){
 		while(UART1buf_peek()<0);
 		if (charBuf[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error 1\n");
+			UART2buf_puts((char*)"Error 1\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
 			while(1);
 		}
 	}
-	LPUART1buf_puts("No value received\n\r");
-	//LPUART1buf_puts("N. modos: 0");
+	UART2buf_puts("No value received\n\r");
+	//UART2buf_puts("N. modos: 0");
 	//while(UART1buf_peek()<0);
 	//temp=UART1buf_getc();
 	//while(UART1buf_peek()<0);
 	//temp=(UART1buf_getc()<<8)|temp;
 	//sprintf(charBuf,"%d\n\r",temp-1);
-	//LPUART1buf_puts(charBuf);
+	//UART2buf_puts(charBuf);
 	HAL_Delay(50);
 	/***************************/
 	//Enviamos el comando por uart
-	LPUART1buf_puts("RPLIDAR_CONF_SCAN_MODE_US_PER_SAMPLE\n\r");
+	UART2buf_puts("RPLIDAR_CONF_SCAN_MODE_US_PER_SAMPLE\n\r");
 	charBuf[0]=START_FLAG_1;
 	charBuf[1]=0x84;
 	charBuf[2]=0x06;//tamaño
@@ -530,14 +531,14 @@ void SEND_GET_LIDAR_CONF(){
 	for (int i=0;i<11;i++){
 		while(UART1buf_peek()<0);
 		if (charBuf[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error 2\n");
+			UART2buf_puts((char*)"Error 2\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
 			while(1);
 		}
 	}
-	LPUART1buf_puts("No value received\n\r...\n\r");
+	UART2buf_puts("No value received\n\r...\n\r");
 	//while(UART1buf_peek()<0);
 	//temp=UART1buf_getc();
 	//while(UART1buf_peek()<0);
@@ -547,7 +548,7 @@ void SEND_GET_LIDAR_CONF(){
 	//while(UART1buf_peek()<0);
 	//temp=(UART1buf_getc()<<8)|temp;
 	//sprintf(charBuf,"%d \n\r",temp);
-	//LPUART1buf_puts(charBuf);
+	//UART2buf_puts(charBuf);
 	HAL_Delay(50);
 }
 uint8_t  BinToAsc(uint8_t  BinValue)
@@ -562,13 +563,13 @@ void SEND_GET_INFO(){
 	unsigned int temp,temp_aux_1;
 	char charBuf[40];
 	//Enviamos el comando por uart
-	LPUART1buf_puts("Enviando comando GET_INFO\n\r");
+	UART2buf_puts("Enviando comando GET_INFO\n\r");
 	UART1buf_putn(GET_INFO_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
 		while(UART1buf_peek()<0);
 		if (GET_INFO_DESCRIPTOR[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error\n");
+			UART2buf_puts((char*)"Error\n");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
@@ -579,18 +580,18 @@ void SEND_GET_INFO(){
 	while(UART1buf_peek()<0);
 	temp=UART1buf_getc();
 	sprintf(charBuf,"modelo: %d\n\r",temp);
-	LPUART1buf_puts(charBuf);
+	UART2buf_puts(charBuf);
 	while(UART1buf_peek()<0);
 	temp_aux_1=UART1buf_getc();
 	while(UART1buf_peek()<0);
 	temp=UART1buf_getc();
 	sprintf(charBuf,"firmware: %d.%d\n\r",temp,temp_aux_1);
-	LPUART1buf_puts(charBuf);
+	UART2buf_puts(charBuf);
 	while(UART1buf_peek()<0);
 	temp=UART1buf_getc();
 	sprintf(charBuf,"hardware: %d\n\r",temp);
-	LPUART1buf_puts(charBuf);
-	LPUART1buf_puts("Serial number: ");
+	UART2buf_puts(charBuf);
+	UART2buf_puts("Serial number: ");
 	for (int z=0;z<16;z++){
 		while(UART1buf_peek()<0);
 		temp=UART1buf_getc();
@@ -598,8 +599,8 @@ void SEND_GET_INFO(){
 		charBuf[z*2+1]=BinToAsc(temp);
 	}
 	charBuf[32]='\0';
-	LPUART1buf_puts(charBuf);
-	LPUART1buf_puts("\n\r");
+	UART2buf_puts(charBuf);
+	UART2buf_puts("\n\r");
 	HAL_Delay(50);
 }
 //
@@ -618,7 +619,7 @@ void SEND_GET_INFO(){
 //	for (int i=0;i<7;i++){
 //		while(UART1buf_peek()<0);
 //		if (EXPRESS_SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-//			LPUART1buf_puts((char*)"Error EXPRESS SCAN\n");
+//			UART2buf_puts((char*)"Error EXPRESS SCAN\n");
 //			//Enviar nuevamente el comando
 //
 //			//Analizar si está en protección
@@ -743,7 +744,7 @@ void SEND_GET_INFO(){
 //	for (int i=0;i<7;i++){
 //		while(UART1buf_peek()<0);
 //		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-//			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//			UART2buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
 //			//Enviar nuevamente el comando
 //
 //			//Analizar si está en protección
@@ -881,7 +882,7 @@ void SEND_GET_INFO(){
 //	}
 //	///* Unmount SDCARD */
 //	while(f_mount(NULL, "/", 1)!= FR_OK);
-//	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+//	UART2buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
 //	//Mandamos el comando de STOP
 //	UART1buf_putn(STOP_REQUEST, 2);
 //	//Detenemos el motor
@@ -890,7 +891,7 @@ void SEND_GET_INFO(){
 //	//Borramos data del buffer
 //	UART1buf_flushRx();
 //	//Enviamos "fin de SAVE_SCAN_DATA"
-//	LPUART1buf_puts ("Fin de la operación\n\r");
+//	UART2buf_puts ("Fin de la operación\n\r");
 //
 //
 //
@@ -923,10 +924,9 @@ void SAVE_SCAN_DATA(){
 	UART1buf_putn(SCAN_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
-		while(UART1buf_peek()<0);//Analizar
-		//
+		while(!UART2buf_available());
 		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+			UART2buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
 			//Enviar nuevamente el comando
 
 			//Analizar si está en protección
@@ -992,8 +992,8 @@ void SAVE_SCAN_DATA(){
 		//Realizamos la conversión float a string
 		sprintf(chars_buf,"%.3f,%.3f\n",x,y);
 
-		if (LPUART1buf_peek()>0){
-			LPUART1buf_puts("Deteniendo SCAN\n\r");
+		if (UART2buf_peek()>0){
+			UART2buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
@@ -1033,8 +1033,8 @@ void SAVE_SCAN_DATA(){
 			sprintf(chars_buf,"%.3f,%.3f\n",x,y);
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 		}
-		if (LPUART1buf_peek()>0){
-			LPUART1buf_puts("Deteniendo SCAN\n\r");
+		if (UART2buf_peek()>0){
+			UART2buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
@@ -1082,8 +1082,8 @@ void SAVE_SCAN_DATA(){
 		f_puts(StrBuf, &fil);
 		//n_points++;
 		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
-		if (LPUART1buf_peek()>0){
-			LPUART1buf_puts("Deteniendo SCAN\n\r");
+		if (UART2buf_peek()>0){
+			UART2buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
@@ -1136,8 +1136,8 @@ void SAVE_SCAN_DATA(){
 			//f_puts(chars_buf, &fil);
 			//n_points++;
 */
-			if (LPUART1buf_peek()>0){
-				LPUART1buf_puts("Deteniendo SCAN\n\r");
+			if (UART2buf_peek()>0){
+				UART2buf_puts("Deteniendo SCAN\n\r");
 				//Cerramos el archivo
 				f_close(&fil);
 				//Salimos del while
@@ -1184,8 +1184,8 @@ void SAVE_SCAN_DATA(){
 		f_puts(StrBuf, &fil);
 		//n_points++;
 		//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
-		if (LPUART1buf_peek()>0){
-			LPUART1buf_puts("Deteniendo SCAN\n\r");
+		if (UART2buf_peek()>0){
+			UART2buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
@@ -1281,15 +1281,15 @@ void SAVE_SCAN_DATA(){
 		}
 		//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
 		//Verificamos que se presionó el botón
-		if (LPUART1buf_peek()>0){
-			LPUART1buf_puts("Deteniendo SCAN\n\r");
+		if (UART2buf_peek()>0){
+			UART2buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
 			//Salimos del while
 			break;
 		}
 	}
-	LPUART1buf_getc();
+	UART2buf_getc();
 	//Mandamos el comando de STOP
 	UART1buf_putn(STOP_REQUEST, 2);
 	//Detenemos el motor
@@ -1298,7 +1298,7 @@ void SAVE_SCAN_DATA(){
 	//Borramos data del buffer
 	UART1buf_flushRx();
 	//Enviamos "fin de SAVE_SCAN_DATA"
-	LPUART1buf_puts ("Fin de la operación\n\r");
+	UART2buf_puts ("Fin de la operación\n\r");
 }
 
 //void SAVE_SCAN_DATA_old(){
@@ -1323,7 +1323,7 @@ void SAVE_SCAN_DATA(){
 //	for (int i=0;i<7;i++){
 //		while(UART1buf_peek()<0);
 //		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-//			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//			UART2buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
 //			//Enviar nuevamente el comando
 //
 //			//Analizar si está en protección
@@ -1411,7 +1411,7 @@ void SAVE_SCAN_DATA(){
 //			for (int i=0;i<7;i++){
 //				while(UART1buf_peek()<0);
 //				if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
-//					LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
+//					UART2buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
 //					//Enviar nuevamente el comando
 //
 //					//Analizar si está en protección
@@ -1515,7 +1515,7 @@ void SAVE_SCAN_DATA(){
 //	}
 //	/* Unmount SDCARD */
 //	while(f_mount(NULL, "/", 1)!= FR_OK);
-//	LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+//	UART2buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
 //	//Mandamos el comando de STOP
 //	UART1buf_putn(STOP_REQUEST, 2);
 //	//Detenemos el motor
@@ -1524,7 +1524,7 @@ void SAVE_SCAN_DATA(){
 //	//Borramos data del buffer
 //	UART1buf_flushRx();
 //	//Enviamos "fin de SAVE_SCAN_DATA"
-//	LPUART1buf_puts ("Fin de la operación\n\r");
+//	UART2buf_puts ("Fin de la operación\n\r");
 //}
 /* USER CODE END PFP */
 
@@ -1569,23 +1569,27 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
   char buffer[64];
-    //Inicializamos los UARTs
-    LPUART1buf_init(115200,SERIAL_8N1,0);
-    UART1buf_init(256000,SERIAL_8N1,0);
+	/*	//Inicializamos los UARTs(arturo)
+		LPUART1buf_init(115200,SERIAL_8N1,0);
+		UART1buf_init(256000,SERIAL_8N1,0); */
+    //Iniciamos los UARTs(laureano)
+    UART1buf_init(256000);
+    UART2buf_init(115200);
+
     //Mount SD card
-    LPUART1buf_puts("Intentando mounted SD CARD...\n\r");
+    UART2buf_puts("Intentando mounted SD CARD...\n\r");
     HAL_Delay (500);
     while (f_mount(&fs,"/", 1) != FR_OK);
-    LPUART1buf_puts("SD CARD mounted successfully...\n\r");
+    UART2buf_puts("SD CARD mounted successfully...\n\r");
     /*************** Card capacity details ********************/
     /* Check free space */
     while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
     total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
     sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
-    LPUART1buf_puts(buffer);
+    UART2buf_puts(buffer);
     free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
     sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
-    LPUART1buf_puts(buffer);
+    UART2buf_puts(buffer);
     //Enviamos el comando de RESET
     SEND_RESET_REQUEST();//DESCOMENTAR LUEGO DE TEMRINAR CON EL SD
     /* USER CODE END 2 */
@@ -1602,25 +1606,25 @@ int main(void)
 	  //SEND_EXPRESS_SCAN();
 
 	  //Esperamos a que se presione el Boton
-	  LPUART1buf_puts((char*)"Iniciamos:\n\r");
-	  LPUART1buf_puts((char*)"0: usando peek\n\r");
-	  LPUART1buf_puts((char*)"1: Vemos solo puntos de inicio\n\r");
-	  LPUART1buf_puts((char*)"2: Recibe y guarda\n\r");
-	  LPUART1buf_puts((char*)"3: Codigo Lalo\n\r");
-	  while(LPUART1buf_peek()<0);
-	  opcion=LPUART1buf_getc();
+	  UART2buf_puts((char*)"Iniciamos:\n\r");
+	  UART2buf_puts((char*)"0: usando peek\n\r");
+	  UART2buf_puts((char*)"1: Vemos solo puntos de inicio\n\r");
+	  UART2buf_puts((char*)"2: Recibe y guarda\n\r");
+	  UART2buf_puts((char*)"3: Codigo Lalo\n\r");
+	  while(UART2buf_peek()<0);
+	  opcion=UART2buf_getc();
 	  //LPUART1buf_flushRx();
-	  LPUART1buf_puts((char*)"Mandamos SCAN request:\n\r");
+	  UART2buf_puts((char*)"Mandamos SCAN request:\n\r");
 	  //SAVE_DATA_bufdouble();
 	  SAVE_SCAN_DATA();
 
-	  LPUART1buf_puts((char*)"Desmount SD?:\n\r");
-	  while(LPUART1buf_peek()<0);
-	  opcion=LPUART1buf_getc();
+	  UART2buf_puts((char*)"Desmount SD?:\n\r");
+	  while(UART2buf_peek()<0);
+	  opcion=UART2buf_getc();
 	  if(opcion=='Y')
 	  {/* Unmount SDCARD */
 		while(f_mount(NULL, "/", 1)!= FR_OK);
-		LPUART1buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
+		UART2buf_puts ("SD CARD UNMOUNTED successfully, puedes retirar la tarjeta\n\r");
 		while(1);
 	  }
 	  //setMotorDutyCycle(60);

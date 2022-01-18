@@ -1,1 +1,5 @@
 1642455201087	Delete resource 'RPLIDAR_G431/FATFS/Target/user_diskio.c'
+1642548177038	Delete resource 'RPLIDAR_G431/Core/Src/uart_buf_g4.c'
+1642548179147	Delete resource 'RPLIDAR_G431/Core/Src/uart_buf.c'
+1642548184049	Delete resource 'RPLIDAR_G431/Core/Inc/uart_buf_g4.h'
+1642548186027	Delete resource 'RPLIDAR_G431/Core/Inc/uart_buf.h'
