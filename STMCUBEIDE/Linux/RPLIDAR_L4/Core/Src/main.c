@@ -921,7 +921,8 @@ void SAVE_SCAN_DATA(){
 	UART1buf_putn(SCAN_REQUEST,2);
 	//Comenzamos a recibir los primeros 7 valores y verificamos si hay error
 	for (int i=0;i<7;i++){
-		while(UART1buf_peek()<0);
+		while(UART1buf_peek()<0);//Analizar
+		//
 		if (SCAN_DESCRIPTOR[i]!=UART1buf_getc()){
 			LPUART1buf_puts((char*)"Error\nA5-5A-05-00-00-40-81\n\r");
 			//Enviar nuevamente el comando
@@ -980,19 +981,23 @@ void SAVE_SCAN_DATA(){
 			if(C){
 				n_points++;
 			}else{
+				//Dato errado
 				n_wrong_points++;
 			}
 			if(S){
 				init=1;
 			}
 		}else{
+			//Dato errado
 			for (int i=0;i<4;i++){
 				UART1buf_getc();
 				while(UART1buf_peek()<0);
 			}
 			UART1buf_getc();
+			n_wrong_points++;
 		}
 		if(init!=0){
+			HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 1);
 			//Si terminamos un SCAN procesamos y enviamos a la SD
 			init=0;
 			//procesamos data
@@ -1000,19 +1005,20 @@ void SAVE_SCAN_DATA(){
 				temp=(MainBuf[z*5+1]>>1)&0x7F;
 				temp|=(MainBuf[z*5+2]<<7);
 				angle=(float)temp/64.0;
-				angle=angle*M_PI/180.0;
+				//angle=angle*M_PI/180.0;
 				/****Decodificamos la distancia****/
 				//Desplazamos los bits
 				temp=MainBuf[z*5+3];
 				temp|=(MainBuf[z*5+4]<<8);
 				distance=(float)temp/4.0;
 				//Procedemos a convertir en coordenadas cartesianas
-				x=distance*cosf(angle+M_PI_2);
-				y=distance*sinf(angle+M_PI_2);
+				//x=distance*cosf(angle+M_PI_2);
+				//y=distance*sinf(angle+M_PI_2);
 				//Realizamos la conversión float a string
-				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
+				sprintf(chars_buf,"%.3f,%.3f\n",angle,distance);
+				//sprintf(chars_buf,"%.3f,%.3f\n",x,y);
 				//escribimos en la SD
-				while(f_lseek(&fil, f_size(&fil))!= FR_OK);
+				//while(f_lseek(&fil, f_size(&fil))!= FR_OK);
 				f_puts(chars_buf, &fil);
 			}
 			n_points--;
@@ -1027,11 +1033,12 @@ void SAVE_SCAN_DATA(){
 			}
 			n_points=1;
 			n_wrong_points=0;
+			HAL_GPIO_WritePin(LD3_GPIO_Port, LD3_Pin, 0);
 			//read aditional data to sync
-			for(int z=0;z<7*5;z++){
+			/*for(int z=0;z<7*5;z++){
 				while(UART1buf_peek()<0);
 				UART1buf_getc();
-			}
+			}*/
 		}
 		//HAL_GPIO_TogglePin(LD3_GPIO_Port, LD3_Pin);
 		//Verificamos que se presionó el botón

@@ -1,13 +1,18 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="led"/>
+		<item key="selection" value="LD2"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
+			<item value="LD2"/>
+			<item value="%.3"/>
+			<item value="sprintf"/>
+			<item value="LD3"/>
+			<item value="Binto"/>
 			<item value="led"/>
 			<item value="bw"/>
 			<item value="UserButton"/>
@@ -15,6 +20,7 @@
 			<item value="GPIO_PIN_"/>
 		</list>
 		<list key="replacehistory">
+			<item value="LD2"/>
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
