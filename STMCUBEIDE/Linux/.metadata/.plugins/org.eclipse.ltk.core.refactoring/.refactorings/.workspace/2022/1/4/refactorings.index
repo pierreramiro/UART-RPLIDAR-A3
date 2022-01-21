@@ -3,3 +3,5 @@
 1642548179147	Delete resource 'RPLIDAR_G431/Core/Src/uart_buf.c'
 1642548184049	Delete resource 'RPLIDAR_G431/Core/Inc/uart_buf_g4.h'
 1642548186027	Delete resource 'RPLIDAR_G431/Core/Inc/uart_buf.h'
+1642693920206	Delete resource 'RPLIDAR_G431/Core/Inc/G4uart_buf.h'
+1642693966675	Delete resource 'RPLIDAR_G431/Core/Src/G4uart_buf.c'

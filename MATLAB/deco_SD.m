@@ -1,9 +1,8 @@
 clear;clc;close all
 data=readmatrix("test.csv");
-%% Eliminamos puntos que dieron Inf
-% data(any(isinf(data),2),:) = [];
-% data(any(isinf(data),2),:) = [];
-% data(sum(isnan(data), 2) == 1, :) = [];
+%% Eliminamos puntos que dieron Inf o NaN
+data(any(isinf(data),2),:) = [];
+data(sum(isnan(data), 2) == 1, :) = [];
 %% Ploteamos la data
 %No olvidar colocar el signo al valor de data y añadir el offset angular
 %según corresponda. En este caso el offset es de 90/2 y el signo es

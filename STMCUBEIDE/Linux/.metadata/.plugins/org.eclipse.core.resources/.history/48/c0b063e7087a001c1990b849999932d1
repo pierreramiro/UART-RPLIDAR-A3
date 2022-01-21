@@ -1,0 +1,499 @@
+/**
+ * File:		uart_buf.h
+ * Title:		Hardware serial library using ring buffer
+ * Author:		Arturo Purizaga
+ * MCU:			STM32F4 with built-in UART or USART (STM32F407 for now)
+ * Compiler:	ARM GCC
+ * Date:		16-May-2016
+ * Brief:		This file provide firmware functions to control the UART or USART peripheral using a ring buffer.
+ *
+ */
+
+#ifndef UART_BUF_H_
+#define UART_BUF_H_
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "stm32g4xx_hal.h"
+
+//#define HAL_UART_TIMEOUT_VALUE              0x1FFFFFF
+
+
+
+
+/* Habilitar m�dulo UART 6-7 como se requiera */
+#define UART1_ENABLED
+#define UART2_ENABLED  // PC
+//#define UART3_ENABLED
+#define UART4_ENABLED
+//#define UART5_ENABLED
+//#define LPUART1_ENABLED // no funciona, solo 9600bps
+
+
+/** Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART1_RX_BUFFER_SIZE 1024 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART2_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART3_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART4_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART5_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define LPUART1_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+/** Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define UART1_TX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define UART2_TX_BUFFER_SIZE 128 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define UART3_TX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define UART4_TX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define UART5_TX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+#define LPUART1_TX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de transmisi�n. Debe ser potencia de 2. */
+
+/** Define configuraci�n del puerto serial */
+#define UART1_WORDLENGHT	UART_WORDLENGTH_8B
+#define UART1_PARITY		UART_PARITY_NONE
+#define UART1_STOPBITS		UART_STOPBITS_1
+#define UART1_OVERSAMPLING	UART_OVERSAMPLING_16
+
+#define UART2_WORDLENGHT	UART_WORDLENGTH_8B
+#define UART2_PARITY		UART_PARITY_NONE
+#define UART2_STOPBITS		UART_STOPBITS_1
+#define UART2_OVERSAMPLING	UART_OVERSAMPLING_16
+
+#define UART3_WORDLENGHT	UART_WORDLENGTH_8B
+#define UART3_PARITY		UART_PARITY_NONE
+#define UART3_STOPBITS		UART_STOPBITS_1
+#define UART3_OVERSAMPLING	UART_OVERSAMPLING_16
+
+#define UART4_WORDLENGHT	UART_WORDLENGTH_8B
+#define UART4_PARITY		UART_PARITY_NONE
+#define UART4_STOPBITS		UART_STOPBITS_1
+#define UART4_OVERSAMPLING	UART_OVERSAMPLING_16
+
+#define UART5_WORDLENGHT	UART_WORDLENGTH_8B
+#define UART5_PARITY		UART_PARITY_NONE
+#define UART5_STOPBITS		UART_STOPBITS_1
+#define UART5_OVERSAMPLING	UART_OVERSAMPLING_16
+
+#define LPUART1_WORDLENGHT	UART_WORDLENGTH_8B
+#define LPUART1_PARITY		UART_PARITY_NONE
+#define LPUART1_STOPBITS	UART_STOPBITS_1
+#define LPUART1_OVERSAMPLING	UART_OVERSAMPLING_16
+
+
+
+/** Define puertos a usarse por el UART/USART */
+/** Puertos para USART1
+ * 1: Puertos PA9(TX) y PA10(RX)
+ * 2: Puertos PB6(TX) y PB7(RX)
+ */
+#define UART1_TX_PORT_SELECT	2
+#define UART1_RX_PORT_SELECT	2
+
+/** Puertos para USART2
+ * 1: Puertos PA2(TX) y PA3(RX)
+ * 2: Puertos PD5(TX) y PD6(RX)
+ */
+#define UART2_TX_PORT_SELECT	1
+#define UART2_RX_PORT_SELECT	1
+
+
+/** Puertos para USART3
+ * 1: Puertos PB10(TX) y PB11(RX)
+ * 2: Puertos PB9(TX) y PB8(RX)
+ * 3: Puertos PD8(TX) y PD0(RX)
+ */
+#define UART3_TX_PORT_SELECT	2
+#define UART3_RX_PORT_SELECT	2
+
+
+
+/** Puertos para UART4
+ * 1: Puertos PA0(TX) y PA1(RX)
+ * 2: Puertos PC10(TX) y PC11(RX)
+ */
+#define UART4_TX_PORT_SELECT	1
+#define UART4_RX_PORT_SELECT	1
+
+/** Puertos para UART5
+ * 1: Puertos PC11(TX) y PD2(RX)
+ */
+#define UART5_TX_PORT_SELECT	1
+#define UART5_RX_PORT_SELECT	1
+
+/** Puertos para LPUART1
+ * 1: Puertos PA2(TX) y PA3(RX)
+ * 2: Puertos PB11(TX) y PB10(RX)
+ */
+#define LPUART1_TX_PORT_SELECT	1
+#define LPUART1_RX_PORT_SELECT	1
+
+/** Define recursos de reloj para el UARTX */
+#if defined(UART1_ENABLED)
+#define UART1_CLK_ENABLE()				__USART1_CLK_ENABLE()
+
+#if UART1_TX_PORT_SELECT == 2
+#define UART1_TX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define UART1_TX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#if UART1_RX_PORT_SELECT == 2
+#define UART1_RX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define UART1_RX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#define UART1_FORCE_RESET()				__USART1_FORCE_RESET()
+#define UART1_RELEASE_RESET()			__USART1_RELEASE_RESET()
+#endif
+
+#if defined(UART2_ENABLED)
+#define UART2_CLK_ENABLE()				__USART2_CLK_ENABLE()
+
+#if UART2_TX_PORT_SELECT == 2
+#define UART2_TX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#else
+#define UART2_TX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#if UART2_RX_PORT_SELECT == 2
+#define UART2_RX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#else
+#define UART2_RX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#define UART2_FORCE_RESET()				__USART2_FORCE_RESET()
+#define UART2_RELEASE_RESET()			__USART2_RELEASE_RESET()
+#endif
+
+#if defined(UART3_ENABLED)
+#define UART3_CLK_ENABLE()				__USART3_CLK_ENABLE()
+
+#if UART3_TX_PORT_SELECT == 3
+#define UART3_TX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#elif UART3_TX_PORT_SELECT == 2
+#define UART3_TX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define UART3_TX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#endif
+
+#if UART3_RX_PORT_SELECT == 3
+#define UART3_RX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#elif UART3_RX_PORT_SELECT == 2
+#define UART3_RX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define UART3_RX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#endif
+
+#define UART3_FORCE_RESET()				__USART3_FORCE_RESET()
+#define UART3_RELEASE_RESET()			__USART3_RELEASE_RESET()
+#endif
+
+#if defined(UART4_ENABLED)
+#define UART4_CLK_ENABLE()				__UART4_CLK_ENABLE()
+
+#if UART4_TX_PORT_SELECT == 2
+#define UART4_TX_GPIO_CLK_ENABLE()		__GPIOC_CLK_ENABLE()
+#else
+#define UART4_TX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#if UART4_RX_PORT_SELECT == 2
+#define UART4_RX_GPIO_CLK_ENABLE()		__GPIOC_CLK_ENABLE()
+#else
+#define UART4_RX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#define UART4_FORCE_RESET()				__UART4_FORCE_RESET()
+#define UART4_RELEASE_RESET()			__UART4_RELEASE_RESET()
+#endif
+
+#if defined(UART5_ENABLED)
+#define UART5_CLK_ENABLE()				__UART5_CLK_ENABLE()
+
+#if UART5_TX_PORT_SELECT == 2
+#define UART5_TX_GPIO_CLK_ENABLE()		__GPIOC_CLK_ENABLE()
+#else
+#define UART5_TX_GPIO_CLK_ENABLE()		__GPIOC_CLK_ENABLE()
+#endif
+
+#if UART5_RX_PORT_SELECT == 2
+#define UART5_RX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#else
+#define UART5_RX_GPIO_CLK_ENABLE()		__GPIOD_CLK_ENABLE()
+#endif
+
+#define UART5_FORCE_RESET()				__UART5_FORCE_RESET()
+#define UART5_RELEASE_RESET()			__UART5_RELEASE_RESET()
+#endif
+
+#if defined(LPUART1_ENABLED)
+#define LPUART1_CLK_ENABLE()				__LPUART1_CLK_ENABLE()
+
+#if LPUART1_TX_PORT_SELECT == 2
+#define LPUART1_TX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define LPUART1_TX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#if LPUART1_RX_PORT_SELECT == 2
+#define LPUART1_RX_GPIO_CLK_ENABLE()		__GPIOB_CLK_ENABLE()
+#else
+#define LPUART1_RX_GPIO_CLK_ENABLE()		__GPIOA_CLK_ENABLE()
+#endif
+
+#define LPUART1_FORCE_RESET()				__LPUART1_FORCE_RESET()
+#define LPUART1_RELEASE_RESET()			 	__LPUART1_RELEASE_RESET()
+#endif
+
+
+/** Define pins para el UARTX */
+#if defined(UART1_ENABLED)
+#if UART1_TX_PORT_SELECT == 2
+#define UART1_TX_PIN					GPIO_PIN_6
+#define UART1_TX_GPIO_PORT				GPIOB
+#define UART1_TX_AF						GPIO_AF7_USART1
+#else
+#define UART1_TX_PIN					GPIO_PIN_9
+#define UART1_TX_GPIO_PORT				GPIOA
+#define UART1_TX_AF						GPIO_AF7_USART1
+#endif
+
+#if UART1_TX_PORT_SELECT == 2
+#define UART1_RX_PIN					GPIO_PIN_7
+#define UART1_RX_GPIO_PORT				GPIOB
+#define UART1_RX_AF						GPIO_AF7_USART1
+#else
+#define UART1_RX_PIN					GPIO_PIN_10
+#define UART1_RX_GPIO_PORT				GPIOA
+#define UART1_RX_AF						GPIO_AF7_USART1
+#endif
+#endif
+
+#if defined(UART2_ENABLED)
+#if UART2_TX_PORT_SELECT == 2
+#define UART2_TX_PIN					GPIO_PIN_5
+#define UART2_TX_GPIO_PORT				GPIOD
+#define UART2_TX_AF						GPIO_AF7_USART2
+#else
+#define UART2_TX_PIN					GPIO_PIN_2
+#define UART2_TX_GPIO_PORT				GPIOA
+#define UART2_TX_AF						GPIO_AF7_USART2
+#endif
+
+#if UART2_TX_PORT_SELECT == 2
+#define UART2_RX_PIN					GPIO_PIN_6
+#define UART2_RX_GPIO_PORT				GPIOD
+#define UART2_RX_AF						GPIO_AF7_USART2
+#else
+#define UART2_RX_PIN					GPIO_PIN_3
+#define UART2_RX_GPIO_PORT				GPIOA
+#define UART2_RX_AF						GPIO_AF7_USART2
+#endif
+#endif
+
+#if defined(UART3_ENABLED)
+#if UART3_TX_PORT_SELECT == 3
+#define UART3_TX_PIN					GPIO_PIN_8
+#define UART3_TX_GPIO_PORT				GPIOD
+#define UART3_TX_AF						GPIO_AF7_USART3
+#elif UART3_TX_PORT_SELECT == 2
+#define UART3_TX_PIN					GPIO_PIN_9
+#define UART3_TX_GPIO_PORT				GPIOB
+#define UART3_TX_AF						GPIO_AF7_USART3
+#else
+#define UART3_TX_PIN					GPIO_PIN_10
+#define UART3_TX_GPIO_PORT				GPIOB
+#define UART3_TX_AF						GPIO_AF7_USART3
+#endif
+
+#if UART3_TX_PORT_SELECT == 3
+#define UART3_RX_PIN					GPIO_PIN_9
+#define UART3_RX_GPIO_PORT				GPIOD
+#define UART3_RX_AF						GPIO_AF7_USART3
+#elif UART3_TX_PORT_SELECT == 2
+#define UART3_RX_PIN					GPIO_PIN_8
+#define UART3_RX_GPIO_PORT				GPIOB
+#define UART3_RX_AF						GPIO_AF7_USART3
+#else
+#define UART3_RX_PIN					GPIO_PIN_11
+#define UART3_RX_GPIO_PORT				GPIOB
+#define UART3_RX_AF						GPIO_AF7_USART3
+#endif
+#endif
+
+#if defined(UART4_ENABLED)
+#if UART4_TX_PORT_SELECT == 2
+#define UART4_TX_PIN					GPIO_PIN_10
+#define UART4_TX_GPIO_PORT				GPIOC
+#define UART4_TX_AF						GPIO_AF5_UART4
+#else
+#define UART4_TX_PIN					GPIO_PIN_0
+#define UART4_TX_GPIO_PORT				GPIOA
+#define UART4_TX_AF						GPIO_AF8_UART4
+#endif
+
+#if UART4_TX_PORT_SELECT == 2
+#define UART4_RX_PIN					GPIO_PIN_11
+#define UART4_RX_GPIO_PORT				GPIOC
+#define UART4_RX_AF						GPIO_AF5_UART4
+#else
+#define UART4_RX_PIN					GPIO_PIN_1
+#define UART4_RX_GPIO_PORT				GPIOA
+#define UART4_RX_AF						GPIO_AF8_UART4
+#endif
+#endif
+
+#if defined(UART5_ENABLED)
+#if UART5_TX_PORT_SELECT == 2
+#define UART5_TX_PIN					GPIO_PIN_11
+#define UART5_TX_GPIO_PORT				GPIOC
+#define UART5_TX_AF						GPIO_AF8_UART5
+#else
+#define UART5_TX_PIN					GPIO_PIN_11
+#define UART5_TX_GPIO_PORT				GPIOC
+#define UART5_TX_AF						GPIO_AF8_UART5
+#endif
+
+#if UART5_TX_PORT_SELECT == 2
+#define UART5_RX_PIN					GPIO_PIN_2
+#define UART5_RX_GPIO_PORT				GPIOD
+#define UART5_RX_AF						GPIO_AF8_UART5
+#else
+#define UART5_RX_PIN					GPIO_PIN_2
+#define UART5_RX_GPIO_PORT				GPIOD
+#define UART5_RX_AF						GPIO_AF8_UART5
+#endif
+#endif
+
+#if defined(LPUART1_ENABLED)
+#if LPUART1_TX_PORT_SELECT == 2
+#define LPUART1_TX_PIN					GPIO_PIN_11
+#define LPUART1_TX_GPIO_PORT			GPIOB
+#define LPUART1_TX_AF					GPIO_AF8_LPUART1
+#else
+#define LPUART1_TX_PIN					GPIO_PIN_2
+#define LPUART1_TX_GPIO_PORT			GPIOA
+#define LPUART1_TX_AF					GPIO_AF12_LPUART1
+#endif
+
+#if LPUART1_TX_PORT_SELECT == 2
+#define LPUART1_RX_PIN					GPIO_PIN_10
+#define LPUART1_RX_GPIO_PORT			GPIOB
+#define LPUART1_RX_AF					GPIO_AF8_LPUART1
+#else
+#define LPUART1_RX_PIN					GPIO_PIN_3
+#define LPUART1_RX_GPIO_PORT			GPIOA
+#define LPUART1_RX_AF					GPIO_AF12_LPUART1
+#endif
+#endif
+
+
+/** Definici�n del NVIC para el UARTx */
+#if defined(UART1_ENABLED)
+#define IRQ_UART1						USART1_IRQn
+#define IRQHandler_UART1				USART1_IRQHandler
+#endif
+
+#if defined(UART2_ENABLED)
+#define IRQ_UART2						USART2_IRQn
+#define IRQHandler_UART2				USART2_IRQHandler
+#endif
+
+#if defined(UART3_ENABLED)
+#define IRQ_UART3						USART3_IRQn
+#define IRQHandler_UART3				USART3_IRQHandler
+#endif
+
+#if defined(UART4_ENABLED)
+#define IRQ_UART4						UART4_IRQn
+#define IRQHandler_UART4				UART4_IRQHandler
+#endif
+
+#if defined(UART5_ENABLED)
+#define IRQ_UART5						UART5_IRQn
+#define IRQHandler_UART5				UART5_IRQHandler
+#endif
+
+#if defined(LPUART1_ENABLED)
+#define IRQ_LPUART1						LPUART1_IRQn
+#define IRQHandler_LPUART1				LPUART1_IRQHandler
+#endif
+
+/** Definici�n de prototipos */
+#if defined(UART1_ENABLED)
+void UART1buf_init(uint32_t baud);
+void UART1buf_end(void);
+int UART1buf_getc(void);
+int UART1buf_peek(void);
+size_t UART1buf_putc(uint8_t data);
+size_t UART1buf_puts(const char *s);
+size_t UART1buf_putn(const uint8_t *s, size_t n);
+int UART1buf_available(void);
+void UART1buf_flushRx(void);
+void UART1buf_flushTx(bool bDiscard);
+#endif
+
+#if defined(UART2_ENABLED)
+void UART2buf_init(uint32_t baud);
+void UART2buf_end(void);
+int UART2buf_getc(void);
+int UART2buf_peek(void);
+size_t UART2buf_putc(uint8_t data);
+size_t UART2buf_puts(const char *s);
+size_t UART2buf_putn(const uint8_t *s, size_t n);
+int UART2buf_available(void);
+void UART2buf_flushRx(void);
+void UART2buf_flushTx(bool bDiscard);
+#endif
+
+#if defined(UART3_ENABLED)
+void UART3buf_init(uint32_t baud);
+void UART3buf_end(void);
+int UART3buf_getc(void);
+int UART3buf_peek(void);
+size_t UART3buf_putc(uint8_t data);
+size_t UART3buf_puts(const char *s);
+size_t UART3buf_putn(const uint8_t *s, size_t n);
+int UART3buf_available(void);
+void UART3buf_flushRx(void);
+void UART3buf_flushTx(bool bDiscard);
+#endif
+
+#if defined(UART4_ENABLED)
+void UART4buf_init(uint32_t baud);
+void UART4buf_end(void);
+int UART4buf_getc(void);
+int UART4buf_peek(void);
+size_t UART4buf_putc(uint8_t data);
+size_t UART4buf_puts(const char *s);
+size_t UART4buf_putn(const uint8_t *s, size_t n);
+int UART4buf_available(void);
+void UART4buf_flushRx(void);
+void UART4buf_flushTx(bool bDiscard);
+#endif
+
+#if defined(UART5_ENABLED)
+void UART5buf_init(uint32_t baud);
+void UART5buf_end(void);
+int UART5buf_getc(void);
+int UART5buf_peek(void);
+size_t UART5buf_putc(uint8_t data);
+size_t UART5buf_puts(const char *s);
+size_t UART5buf_putn(const uint8_t *s, size_t n);
+int UART5buf_available(void);
+void UART5buf_flushRx(void);
+void UART5buf_flushTx(bool bDiscard);
+#endif
+
+#if defined(LPUART1_ENABLED)
+void LPUART1buf_init(uint32_t baud);
+void LPUART1buf_end(void);
+int LPUART1buf_getc(void);
+int LPUART1buf_peek(void);
+size_t LPUART1buf_putc(uint8_t data);
+size_t LPUART1buf_puts(const char *s);
+size_t LPUART1buf_putn(const uint8_t *s, size_t n);
+int LPUART1buf_available(void);
+void LPUART1buf_flushRx(void);
+void LPUART1buf_flushTx(bool bDiscard);
+#endif
+
+#endif /* UART_BUF_H_ */
