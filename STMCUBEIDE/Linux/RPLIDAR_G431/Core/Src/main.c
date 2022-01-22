@@ -49,7 +49,7 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  MainBuf_SIZE 		(256*5)//13->8192 14->16384 15->32768 16->65536
+#define  MainBuf_SIZE 		(128*5)//13->8192 14->16384 15->32768 16->65536
 #define precision 3  //precision for decimal digits
 /* USER CODE END PD */
 
@@ -60,12 +60,16 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
+DMA_HandleTypeDef hdma_spi1_tx;
 
 TIM_HandleTypeDef htim1;
+
+UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
 // MainBuf[MainBuf_SIZE];
 char MainBuf[MainBuf_SIZE];
+char StrBuf[128*40];
 //char StrBuf[1250];
 //float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
@@ -95,6 +99,13 @@ DWORD fre_clust;
 uint32_t total, free_space;
 // *************************** //
 uint8_t opcion;
+enum
+{
+  TRANSFER_WAIT,
+  TRANSFER_COMPLETE,
+  TRANSFER_ERROR
+};
+__IO uint8_t TxState=TRANSFER_WAIT;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -102,6 +113,8 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
+static void MX_DMA_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 void add_theta_rho_to_StringBuf (char *p,float theta,float rho,unsigned int *pointer_n_chars){
 	int int_part,k,ten_pow,temp_int,index=pointer_n_chars[0];
@@ -946,11 +959,11 @@ void SAVE_SCAN_DATA(){
 		return;
 	}
 	//Define variables
-	uint16_t temp,init;
+	uint16_t temp;
 	float angle,distance;
 	float x,y;
-	unsigned int n_points=0,n_wrong_points=0,n_bytes=0;
-	char C,S,chars_buf[24],StrBuf[128*40];
+	unsigned int n_points=0,n_bytes=0;
+	char chars_buf[24];
 	StrBuf[0]='\0';
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/test.csv");
@@ -959,10 +972,8 @@ void SAVE_SCAN_DATA(){
 	//Escribimos la primera línea
 	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
 	//Ahora encendemos el motor
-	setMotorDutyCycle(60);
-	//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
-	//HAL_Delay(70);
-	//HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+	setMotorDutyCycle(50);
+	HAL_Delay(70);
 	//Limpiamos el buffer de Recepción
 	UART1buf_flushRx();
 	//Enviamos el comando por uart
@@ -977,35 +988,6 @@ void SAVE_SCAN_DATA(){
 
 			//Analizar si está en protección
 			while(1);
-		}
-	}
-	//Procedemos a recibir la data del RPLIDAR hasta obtener el punto de inicio de SCAN
-	while(0){
-		while(UART1buf_peek()<0);
-		/****Decodificamos la bandera Flag****/
-		if ((UART1buf_peek()&0x03)==(0x01)){
-			MainBuf[0]=UART1buf_getc();
-			/****Decodificamos el checkbit****/
-			while(UART1buf_peek()<0);
-			C=UART1buf_peek()&0x01;
-			MainBuf[1]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[2]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[3]=UART1buf_getc();
-			while(UART1buf_peek()<0);
-			MainBuf[4]=UART1buf_getc();
-			if(C){
-				n_points++;
-				init=0;
-				break;
-			}
-		}else{
-			for (int i=0;i<4;i++){
-				UART1buf_getc();
-				while(UART1buf_peek()<0);
-			}
-			UART1buf_getc();
 		}
 	}
 /********************************************************************/
@@ -1115,6 +1097,7 @@ void SAVE_SCAN_DATA(){
 			break;
 		}
 	}
+	//TxState=TRANSFER_COMPLETE;
 	while(opcion=='2'){//Recibe y guarda
 		if (!(UART1buf_peek()<0)){
 			//Hay dato,lo guardamos
@@ -1125,8 +1108,16 @@ void SAVE_SCAN_DATA(){
 		if (n_bytes>4){
 			//Tenemos ya 5 datos para procesar
 			n_bytes=0;
+			/*if((n_points&0x00000007)==7){
+				//no leemos
+				chars_buf[0]='0';
+				chars_buf[1]=',';
+				chars_buf[2]='0';
+				chars_buf[3]='\n';
+				chars_buf[4]='\0';
+			}else */
 			if((((MainBuf[n_points*5+0]&0x03)==1)||((MainBuf[n_points*5+0]&0x03)==2))&&((MainBuf[n_points*5+1]&0x01)==1)){
-				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 				temp=(MainBuf[n_points*5+1]>>1)&0x7F;
 				temp|=(MainBuf[n_points*5+2]<<7);
 				angle=(float)temp/64.0;
@@ -1149,28 +1140,31 @@ void SAVE_SCAN_DATA(){
 				float_to_char(y,chars_buf);
 				strcat(StrBuf,chars_buf);
 				strcat(StrBuf,"\n");*/
-				//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			}else{
-				sprintf(chars_buf,"Inf,Inf\n");
-				/*
-				StrBuf[0]='I';
-				StrBuf[1]='n';
-				StrBuf[2]='f';
-				StrBuf[3]=',';
-				StrBuf[4]='I';
-				StrBuf[5]='n';
-				StrBuf[6]='f';
-				StrBuf[7]='\n';*/
+
+				chars_buf[0]='I';
+				chars_buf[1]='n';
+				chars_buf[2]='f';
+				chars_buf[3]=',';
+				chars_buf[4]='I';
+				chars_buf[5]='n';
+				chars_buf[6]='f';
+				chars_buf[7]='\n';
+				chars_buf[8]='\0';
 			}
 			n_points++;
 			strcat(StrBuf,chars_buf);
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 		}
-		if((f_lseek(&fil, f_size(&fil))== FR_OK)&&(n_points>128)){
+		//&&(TxState==TRANSFER_COMPLETE)
+		if((n_points>64)){
 			//Podemos escribir en la SD
 			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			//TxState=TRANSFER_WAIT;
 			//f_puts(StrBuf, &fil);
-			//f_write(&fil, StrBuf, strlen(StrBuf),&bw);
+			f_write(&fil, StrBuf, strlen(StrBuf),&bw);
+			//while(TxState==TRANSFER_WAIT);
 			n_points=0;
 			StrBuf[0]='\0';
 			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
@@ -1183,62 +1177,6 @@ void SAVE_SCAN_DATA(){
 			break;
 		}
 	}
-
-	while(opcion=='3')//codigo Laureano
-	{
-		if(UART1buf_available()<5)
-
-		{
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
-
-		}
-		else
-		{
-
-			//if ((UART1buf_peek()&0x03)==0x01){
-				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 1);
-			//}
-			MainBuf[n_points*5+0]=UART1buf_getc();
-			MainBuf[n_points*5+1]=UART1buf_getc();
-			MainBuf[n_points*5+2]=UART1buf_getc();
-			MainBuf[n_points*5+3]=UART1buf_getc();
-			MainBuf[n_points*5+4]=UART1buf_getc();
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, 0);
-
-/*
-			temp=(MainBuf[n_points*5+1]>>1)&0x7F;
-			temp|=(MainBuf[n_points*5+2]<<7);
-			angle=(float)temp/64.0;
-			//angle=temp;
-			//angle=angle*M_PI/180.0;
-			/ ****Decodificamos la distancia****  /
-			//Desplazamos los bits
-			temp=MainBuf[n_points*5+3];
-			temp|=(MainBuf[n_points*5+4]<<8);
-			distance=(float)temp/4.0;
-			//distance=temp;
-			//Procedemos a convertir en coordenadas cartesianas
-			x=distance*cosf(angle+M_PI_2);
-			y=distance*sinf(angle+M_PI_2);
-			//Realizamos la conversión float a string
-			sprintf(chars_buf,"%.3f,%.3f\n",x,y);
-			//sprintf(chars_buf,"%.3f,%.3f\n",x,y);
-			//escribimos en la SD
-			//while(f_lseek(&fil, f_size(&fil))!= FR_OK);
-			//f_puts(chars_buf, &fil);
-			//n_points++;
-*/
-			if (LPUART1buf_peek()>0){
-				LPUART1buf_puts("Deteniendo SCAN\n\r");
-				//Cerramos el archivo
-				f_close(&fil);
-				//Salimos del while
-				break;
-			}
-
-		}
-	}
-
 /**************************************************************/
 
 	LPUART1buf_getc();
@@ -1293,6 +1231,8 @@ int main(void)
     Error_Handler();
   }
   MX_TIM1_Init();
+  MX_DMA_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   char buffer[64];
 	//Inicializamos los UARTs(arturo)
@@ -1328,7 +1268,6 @@ int main(void)
 	  SEND_GET_HEALTH();
 	  //SEND_GET_LIDAR_CONF();
 	  SEND_GET_INFO();
-
 	  //SEND_EXPRESS_SCAN();
 
 	  //Esperamos a que se presione el Boton
@@ -1469,7 +1408,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 5760-1;
+  htim1.Init.Period = 5759;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -1528,6 +1467,70 @@ static void MX_TIM1_Init(void)
 
 }
 
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+////
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+////
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
+  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
+  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+////
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMAMUX1_CLK_ENABLE();
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel1_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
+
+}
 
 /**
   * @brief GPIO Initialization Function
@@ -1571,6 +1574,10 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi){
+	TxState=TRANSFER_COMPLETE;
+}
 
 /* USER CODE END 4 */
 

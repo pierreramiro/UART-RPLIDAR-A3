@@ -7,6 +7,7 @@
 #include "fatfs_sd.h"
 
 
+extern __IO uint8_t			TxState;
 extern SPI_HandleTypeDef 	hspi1;
 #define HSPI_SDCARD		 	&hspi1
 #define	SD_CS_PORT			GPIOA
@@ -41,6 +42,9 @@ static void SPI_TxByte(uint8_t data)
 {
 	while(!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE));
 	HAL_SPI_Transmit(HSPI_SDCARD, &data, 1, SPI_TIMEOUT);
+	//HAL_SPI_Transmit_IT(HSPI_SDCARD, &data, 1);
+	//while(TxState==0);
+	//TxState=0;
 }
 
 /* SPI transmit buffer */
@@ -48,6 +52,9 @@ static void SPI_TxBuffer(uint8_t *buffer, uint16_t len)
 {
 	while(!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE));
 	HAL_SPI_Transmit(HSPI_SDCARD, buffer, len, SPI_TIMEOUT);
+	//HAL_SPI_Transmit_IT(HSPI_SDCARD, buffer, len);
+	//while(TxState==0);
+	//TxState=0;
 }
 
 /* SPI receive a byte */
@@ -99,6 +106,8 @@ static void SD_PowerOn(void)
 	for(int i = 0; i < 10; i++)
 	{
 		SPI_TxByte(0xFF);
+		//while(TxState==0);
+		//TxState==0;
 	}
 
 	/* slave select */
@@ -113,6 +122,8 @@ static void SD_PowerOn(void)
 	args[5] = 0x95;		/* CRC */
 
 	SPI_TxBuffer(args, sizeof(args));
+	//while(TxState==0);
+	//TxState==0;
 
 	/* wait response */
 	while ((SPI_RxByte() != 0x01) && cnt)
@@ -122,6 +133,8 @@ static void SD_PowerOn(void)
 
 	DESELECT();
 	SPI_TxByte(0XFF);
+	//while(TxState==0);
+	//TxState==0;
 
 	PowerFlag = 1;
 }

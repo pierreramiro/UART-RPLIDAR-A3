@@ -1,30 +1,31 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="UART2buf_peek"/>
+		<item key="selection" value=""/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
+			<item value="dma"/>
+			<item value="HAL_SPI_Transmit"/>
+			<item value="HAL_SPI"/>
+			<item value="f_puts"/>
+			<item value="res"/>
+			<item value="FR_O"/>
+			<item value="ret"/>
+			<item value="f_lsee"/>
+			<item value="retur"/>
+			<item value="UART2"/>
+			<item value="UART2buf_init"/>
 			<item value="LPUART1buf_peek"/>
 			<item value="LPUART1buf_getc"/>
 			<item value="LPUART1buf"/>
 			<item value="LPUART1buf_puts"/>
-			<item value="uart1_buffer"/>
-			<item value="uart1_buf"/>
-			<item value="uart"/>
-			<item value="UART1_RX_BUFFER_MASK"/>
-			<item value="UART1_RX_BUFFER_SIZE"/>
-			<item value="uart1"/>
-			<item value="StrB"/>
-			<item value="StrB "/>
-			<item value="Str"/>
-			<item value="LD2"/>
-			<item value="%.3"/>
 		</list>
 		<list key="replacehistory">
+			<item value="LPUART1"/>
 			<item value="UART2buf_peek"/>
 			<item value="UART2buf_getc"/>
 			<item value="UART2buf_pee"/>
@@ -33,8 +34,8 @@
 		</list>
 	</section>
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog_dialogBounds">
-		<item key="DIALOG_X_ORIGIN" value="963"/>
-		<item key="DIALOG_Y_ORIGIN" value="190"/>
+		<item key="DIALOG_X_ORIGIN" value="151"/>
+		<item key="DIALOG_Y_ORIGIN" value="284"/>
 		<item key="DIALOG_WIDTH" value="348"/>
 		<item key="DIALOG_HEIGHT" value="440"/>
 		<item key="DIALOG_FONT_NAME" value="1|Ubuntu|11.0|0|GTK|1|"/>
