@@ -5,9 +5,19 @@
 #include "stm32g4xx_hal.h"
 #include "diskio.h"
 #include "fatfs_sd.h"
+#include "math.h"
+#include "string.h"
+#include "stdio.h"
+#include "uart_buf_g4.h"
 
-
-extern __IO uint8_t			TxState;
+extern unsigned int 		n_points;
+extern char 				MainBuf[50];
+extern bool					AFlag;
+extern char 				StrBufA[128*40];
+extern char 				StrBufB[128*40];
+extern __IO uint8_t			TxCompleted;
+extern __IO uint8_t			RxCompleted;
+extern uint8_t				ReceivingData;
 extern SPI_HandleTypeDef 	hspi1;
 #define HSPI_SDCARD		 	&hspi1
 #define	SD_CS_PORT			GPIOA
@@ -220,6 +230,126 @@ static bool SD_TxDataBlock(const uint8_t *buff, BYTE token)
 
 	return FALSE;
 }
+static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
+{
+	uint8_t resp;
+	uint8_t i = 0;
+	//uint8_t buffer[10];
+	uint16_t temp;
+	float angle,distance;
+	float x,y;
+	unsigned int n_bytes=0;
+	char chars_buf[24];
+
+
+	/* wait SD ready */
+	if (SD_ReadyWait() != 0xFF) return FALSE;
+
+	/* transmit token */
+	//buffer[0]=token;
+	SPI_TxByte(token);
+
+	/* if it's not STOP token, transmit data */
+	if (token != 0xFD)
+	{
+		//SPI_TxBuffer((uint8_t*)buff, 512);
+		while(!TxCompleted);
+		TxCompleted=0;
+		HAL_SPI_Transmit_IT(&hspi1, (uint8_t*)buff, 512);
+		while(!TxCompleted){
+			if (ReceivingData){
+				//seguimos guardando data en buffer
+				if(!(UART1buf_peek()<0)){
+					//Hay dato,lo guardamos
+					//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+					MainBuf[n_bytes]=UART1buf_getc();
+					n_bytes++;
+				}
+				if (n_bytes>4){
+					//Tenemos ya 5 datos para procesar
+					n_bytes=0;
+					/*if((n_points&0x00000007)==7){
+						//no leemos
+						chars_buf[0]='0';
+						chars_buf[1]=',';
+						chars_buf[2]='0';
+						chars_buf[3]='\n';
+						chars_buf[4]='\0';
+					}else */
+					if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)){
+						//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+						temp=(MainBuf[1]>>1)&0x7F;
+						temp|=(MainBuf[2]<<7);
+						angle=(float)temp/64.0;
+						angle=angle*M_PI/180.0;
+						// ******Decodificamos la distancia****  //
+						//Desplazamos los bits
+						temp=MainBuf[3];
+						temp|=(MainBuf[4]<<8);
+						distance=(float)temp/4.0;
+						//distance=temp;
+						//Procedemos a convertir en coordenadas cartesianas
+						x=distance*cosf(angle+M_PI_2);
+						y=distance*sinf(angle+M_PI_2);
+						//Realizamos la conversión float a string
+						sprintf(chars_buf,"%.2f,%.2f\n",x,y);
+						/*float_to_char(x,chars_buf);
+						StrBufA[0]='\0';
+						strcat(StrBufA,chars_buf);
+						strcat(StrBufA,",");
+						float_to_char(y,chars_buf);
+						strcat(StrBufA,chars_buf);
+						strcat(StrBufA,"\n");*/
+						//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+					}else{
+						chars_buf[0]='I';
+						chars_buf[1]='n';
+						chars_buf[2]='f';
+						chars_buf[3]=',';
+						chars_buf[4]='I';
+						chars_buf[5]='n';
+						chars_buf[6]='f';
+						chars_buf[7]='\n';
+						chars_buf[8]='\0';
+					}
+					n_points++;
+					if(AFlag){
+						strcat(StrBufA,chars_buf);
+					}else{
+						strcat(StrBufB,chars_buf);
+					}
+					//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+				}
+			}
+		}
+		/* discard CRC */
+		//SPI_RxByte();
+		//SPI_RxByte();
+		while(!RxCompleted);//ojo con este while, se puede aprovechar
+		RxCompleted=0;
+		HAL_SPI_Receive_IT(&hspi1, NULL, 2);
+
+
+		/* receive response */
+		while (i <= 64)
+		{
+			resp = SPI_RxByte();
+
+			/* transmit 0x05 accepted */
+			if ((resp & 0x1F) == 0x05) break;
+			i++;
+		}
+
+		/* recv buffer clear */
+		while (SPI_RxByte() == 0);
+	}
+
+	/* transmit 0x05 accepted */
+	if ((resp & 0x1F) == 0x05) return TRUE;
+
+	return FALSE;
+}
+
 #endif /* _USE_WRITE */
 
 /* transmit command */
@@ -236,6 +366,7 @@ static BYTE SD_SendCmd(BYTE cmd, uint32_t arg)
 	SPI_TxByte((uint8_t)(arg >> 16)); 	/* Argument[23..16] */
 	SPI_TxByte((uint8_t)(arg >> 8)); 	/* Argument[15..8] */
 	SPI_TxByte((uint8_t)arg); 			/* Argument[7..0] */
+
 
 	/* prepare CRC */
 	if(cmd == CMD0) crc = 0x95;	/* CRC for CMD0(0) */
@@ -256,6 +387,54 @@ static BYTE SD_SendCmd(BYTE cmd, uint32_t arg)
 
 	return res;
 }
+
+static BYTE mySD_SendCmd_IT(BYTE cmd, uint32_t arg,bool actRx)
+{
+	uint8_t crc, res;
+	uint8_t buffer[6];
+
+	/* wait SD ready */
+	if (SD_ReadyWait() != 0xFF) return 0xFF;
+
+	/* transmit command */
+	buffer[0]=cmd; 					/* Command */
+	buffer[1]=(uint8_t)(arg >> 24);		/* Argument[31..24] */
+	buffer[2]=(uint8_t)(arg >> 16);		/* Argument[23..16] */
+	buffer[3]=(uint8_t)(arg >> 8);		/* Argument[15..8] */
+	buffer[4]=(uint8_t)arg;				/* Argument[7..0] */
+
+
+	/* prepare CRC */
+	if(cmd == CMD0) crc = 0x95;	/* CRC for CMD0(0) */
+	else if(cmd == CMD8) crc = 0x87;	/* CRC for CMD8(0x1AA) */
+	else crc = 1;
+
+	/* transmit CRC */
+	buffer[5]=crc;
+	while(!TxCompleted);
+	TxCompleted=0;
+	HAL_SPI_Transmit_IT(&hspi1, buffer, 6);
+
+
+	//Si no hace falta la recepción podemos no considerarla
+	if (actRx){
+		/* Skip a stuff byte when STOP_TRANSMISSION */
+		if (cmd == CMD12) SPI_RxByte();
+
+		/* receive response */
+		uint8_t n = 10;
+		do {
+			res = SPI_RxByte();
+		} while ((res & 0x80) && --n);
+
+		return res;
+	}else{
+		//while(!RxCompleted); Not sure about esto
+		HAL_SPI_Receive_IT(&hspi1, NULL, 12);
+		return 0;
+	}
+}
+
 
 /***************************************
  * user_diskio.c functions
@@ -430,7 +609,7 @@ DRESULT SD_disk_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count)
 	if (count == 1)
 	{
 		/* WRITE_BLOCK */
-		if ((SD_SendCmd(CMD24, sector) == 0) && SD_TxDataBlock(buff, 0xFE))
+		if ((SD_SendCmd(CMD24, sector) == 0) && mySD_TxDataBlockIT(buff, 0xFE))
 			count = 0;
 	}
 	else
@@ -438,19 +617,26 @@ DRESULT SD_disk_write(BYTE pdrv, const BYTE* buff, DWORD sector, UINT count)
 		/* WRITE_MULTIPLE_BLOCK */
 		if (CardType & CT_SD1)
 		{
+			/*
 			SD_SendCmd(CMD55, 0);
-			SD_SendCmd(CMD23, count); /* ACMD23 */
+			SD_SendCmd(CMD23, count); //ACMD23
+			//Enviamos, no nos preocupamos en recibir*/
+			mySD_SendCmd_IT(CMD55, 0,0);
+			mySD_SendCmd_IT(CMD23, count,0); // ACMD23
+			//Ojo debemos considerar el caso de esperar si queremos recepcionar
+			//while(__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_RXNE));
+
 		}
 
-		if (SD_SendCmd(CMD25, sector) == 0)
+		if (mySD_SendCmd_IT(CMD25, sector,1) == 0)
 		{
 			do {
-				if(!SD_TxDataBlock(buff, 0xFC)) break;
+				if(!mySD_TxDataBlockIT(buff, 0xFC)) break;
 				buff += 512;
 			} while (--count);
 
 			/* STOP_TRAN token */
-			if(!SD_TxDataBlock(0, 0xFD))
+			if(!mySD_TxDataBlockIT(0, 0xFD))
 			{
 				count = 1;
 			}

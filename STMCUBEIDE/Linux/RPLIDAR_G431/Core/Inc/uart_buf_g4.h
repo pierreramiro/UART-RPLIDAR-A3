@@ -27,8 +27,8 @@
 
 /* Uncomment line below according to the UART/USART modules to use */
 
-#define LPUART1_ENABLED
-#define UART1_ENABLED
+#define LPUART1_ENABLED //para la comunicación con la PC
+#define UART1_ENABLED //Comunicación con el dispositivo
 //#define UART2_ENABLED
 //#define UART3_ENABLED
 //#define UART4_ENABLED
@@ -36,8 +36,8 @@
 
 
 /** Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
-#define LPUART1_RX_BUFFER_SIZE 64 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
-#define UART1_RX_BUFFER_SIZE 1024 /**< Tamaño del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define LPUART1_RX_BUFFER_SIZE 64/**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
+#define UART1_RX_BUFFER_SIZE 512 /**< Tamaño del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART2_RX_BUFFER_SIZE 128 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART3_RX_BUFFER_SIZE 32 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
 #define UART4_RX_BUFFER_SIZE 32 /**< Tama�o del buffer circular de recepci�n. Debe ser potencia de 2. */
