@@ -104,8 +104,8 @@ DWORD fre_clust;
 uint32_t total, free_space;
 // *************************** //
 uint8_t opcion;
-__IO uint8_t TxCompleted=true;
-__IO uint8_t RxCompleted=true;
+__IO bool TxCompleted=true;
+__IO bool RxCompleted=true;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -122,10 +122,9 @@ void setMotorDutyCycle(float duty){
 	HAL_Delay(3);
 	if (duty!=0){
 		//El ARR tiene como valor máximo 6800@170Mhz
-		TIM1->CCR1 = (uint32_t)duty*66.0;
+		TIM1->CCR1 = (uint32_t)duty*68.0;
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 		HAL_Delay(3);
-
 	}
 }
 void SEND_STOP_REQUEST(){
@@ -1047,6 +1046,8 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_SPI1_Init();
+  TxCompleted=true;
+  RxCompleted=true;
   if (MX_FATFS_Init() != APP_OK) {
     Error_Handler();
   }

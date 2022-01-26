@@ -323,11 +323,11 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 			}
 		}
 		/* discard CRC */
-		//SPI_RxByte();
-		//SPI_RxByte();
-		while(!RxCompleted);//ojo con este while, se puede aprovechar
-		RxCompleted=0;
-		HAL_SPI_Receive_IT(&hspi1, NULL, 2);
+		SPI_RxByte();
+		SPI_RxByte();
+		//while(!RxCompleted);//ojo con este while, se puede aprovechar
+		//RxCompleted=0;
+		//HAL_SPI_Receive_IT(&hspi1, NULL, 2);
 
 
 		/* receive response */
