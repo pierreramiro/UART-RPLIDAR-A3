@@ -24,7 +24,6 @@
 /* USER CODE BEGIN Includes */
 #include "math.h"
 #include "uart_buf_g4.h"
-//#include  "G4uart_buf.h"
 #include "string.h"
 #include "fatfs_sd.h"
 #include "stdio.h"
@@ -60,8 +59,6 @@
 
 /* Private variables ---------------------------------------------------------*/
 SPI_HandleTypeDef hspi1;
-DMA_HandleTypeDef hdma_spi1_rx;
-DMA_HandleTypeDef hdma_spi1_tx;
 
 TIM_HandleTypeDef htim1;
 
@@ -71,8 +68,8 @@ UART_HandleTypeDef huart2;
 // MainBuf[MainBuf_SIZE];
 uint8_t ReceivingData=false;
 bool AFlag=true;
-char MainBuf[MainBuf_SIZE];
-char StrBufA[128*40];
+//char MainBuf[MainBuf_SIZE];
+char StrBufA[400*20];
 //char StrBufB[128*40];
 unsigned int n_points=0;
 //char StrBufA[1250];
@@ -113,7 +110,6 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
-static void MX_DMA_Init(void);
 static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
@@ -773,6 +769,7 @@ void SAVE_SCAN_DATA(){
 	float x,y;
 	unsigned int n_bytes=0;
 	char chars_buf[24];
+	uint8_t MainBuf[10];
 	StrBufA[0]='\0';
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/test.csv");
@@ -781,8 +778,8 @@ void SAVE_SCAN_DATA(){
 	//Escribimos la primera línea
 	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
 	//Ahora encendemos el motor
-	setMotorDutyCycle(50);
-	HAL_Delay(70);
+	setMotorDutyCycle(60);
+	HAL_Delay(1000);
 	//Limpiamos el buffer de Recepción
 	UART1buf_flushRx();
 	//Enviamos el comando por uart
@@ -1000,7 +997,7 @@ void SAVE_SCAN_DATA(){
 		}
 	}
 /**************************************************************/
-
+	ReceivingData=false;
 	LPUART1buf_getc();
 	//Mandamos el comando de STOP
 	UART1buf_putn(STOP_REQUEST, 2);
@@ -1053,7 +1050,6 @@ int main(void)
     Error_Handler();
   }
   MX_TIM1_Init();
-  MX_DMA_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   char buffer[64];
@@ -1064,11 +1060,12 @@ int main(void)
   //Mount SD card
   LPUART1buf_puts("Intentando mounted SD CARD...\n\r");
   HAL_Delay (500);
-  fresult=f_mount(&fs,"/", 1);
+  //fresult=f_mount(&fs, "/", 1);
   while (f_mount(&fs,"/", 1) != FR_OK);
   LPUART1buf_puts("SD CARD mounted successfully...\n\r");
   /*************** Card capacity details ********************/
   /* Check free space */
+  //fresult=f_getfree("", &fre_clust, &pfs);
   while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
   total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
   sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
@@ -1188,7 +1185,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -1332,26 +1329,6 @@ static void MX_USART2_UART_Init(void)
   /* USER CODE BEGIN USART2_Init 2 */
 ////
   /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
-  * Enable DMA controller clock
-  */
-static void MX_DMA_Init(void)
-{
-
-  /* DMA controller clock enable */
-  __HAL_RCC_DMAMUX1_CLK_ENABLE();
-  __HAL_RCC_DMA1_CLK_ENABLE();
-
-  /* DMA interrupt init */
-  /* DMA1_Channel1_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel1_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel1_IRQn);
-  /* DMA1_Channel2_IRQn interrupt configuration */
-  HAL_NVIC_SetPriority(DMA1_Channel2_IRQn, 0, 0);
-  HAL_NVIC_EnableIRQ(DMA1_Channel2_IRQn);
 
 }
 

@@ -11,10 +11,7 @@
 #include "uart_buf_g4.h"
 
 extern unsigned int 		n_points;
-extern char 				MainBuf[50];
-extern bool					AFlag;
-extern char 				StrBufA[128*40];
-//extern char 				StrBufB[128*40];
+extern char 				StrBufA[400*20];
 extern __IO uint8_t			TxCompleted;
 extern __IO uint8_t			RxCompleted;
 extern uint8_t				ReceivingData;
@@ -242,7 +239,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 {
 	uint8_t resp;
 	uint8_t i = 0;
-	//uint8_t buffer[10];
+	uint8_t MainBuf[10];
 	uint16_t temp;
 	float angle,distance;
 	float x,y;
