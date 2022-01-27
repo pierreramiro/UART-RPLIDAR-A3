@@ -73,7 +73,7 @@ uint8_t ReceivingData=false;
 bool AFlag=true;
 char MainBuf[MainBuf_SIZE];
 char StrBufA[128*40];
-char StrBufB[128*40];
+//char StrBufB[128*40];
 unsigned int n_points=0;
 //char StrBufA[1250];
 //float ValBuf[4000];
@@ -122,6 +122,7 @@ void setMotorDutyCycle(float duty){
 	HAL_Delay(3);
 	if (duty!=0){
 		//El ARR tiene como valor máximo 6800@170Mhz
+		//TIM1->CCR1 = (uint32_t)duty*57.6;
 		TIM1->CCR1 = (uint32_t)duty*68.0;
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 		HAL_Delay(3);
@@ -853,8 +854,10 @@ void SAVE_SCAN_DATA(){
 			LPUART1buf_puts("Deteniendo SCAN\n\r");
 			//Cerramos el archivo
 			f_close(&fil);
+			ReceivingData=false;
 			//Salimos del while
 			break;
+
 		}
 
 
@@ -962,11 +965,11 @@ void SAVE_SCAN_DATA(){
 				chars_buf[8]='\0';
 			}
 			n_points++;
-			if(AFlag){
+			//if(AFlag){
 				strcat(StrBufA,chars_buf);
-			}else{
-				strcat(StrBufB,chars_buf);
-			}
+			//}else{
+			//	strcat(StrBufB,chars_buf);
+			//}
 			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 		}
 		//&&(TxState==TRANSFER_COMPLETE)
@@ -975,15 +978,15 @@ void SAVE_SCAN_DATA(){
 			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 			//TxState=TRANSFER_WAIT;
 			//f_puts(StrBufA, &fil);
-			if(AFlag){
-				AFlag=0;
+			//if(AFlag){
+				//AFlag=0;
 				f_write(&fil, StrBufA, strlen(StrBufA),&bw);
 				StrBufA[0]='\0';
-			}else{
-				AFlag=1;
-				f_write(&fil, StrBufB, strlen(StrBufB),&bw);
-				StrBufB[0]='\0';
-			}
+			//}else{
+				//AFlag=1;
+				//f_write(&fil, StrBufB, strlen(StrBufB),&bw);
+				//StrBufB[0]='\0';
+			//}
 			//while(TxState==TRANSFER_WAIT);
 			n_points=0;
 			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
@@ -1046,8 +1049,6 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_SPI1_Init();
-  TxCompleted=true;
-  RxCompleted=true;
   if (MX_FATFS_Init() != APP_OK) {
     Error_Handler();
   }
@@ -1063,6 +1064,7 @@ int main(void)
   //Mount SD card
   LPUART1buf_puts("Intentando mounted SD CARD...\n\r");
   HAL_Delay (500);
+  fresult=f_mount(&fs,"/", 1);
   while (f_mount(&fs,"/", 1) != FR_OK);
   LPUART1buf_puts("SD CARD mounted successfully...\n\r");
   /*************** Card capacity details ********************/
@@ -1186,7 +1188,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_32;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
