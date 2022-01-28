@@ -69,7 +69,7 @@ UART_HandleTypeDef huart2;
 uint8_t ReceivingData=false;
 bool AFlag=true;
 //char MainBuf[MainBuf_SIZE];
-char StrBufA[400*20];
+char StrBufA[460*20];
 //char StrBufB[128*40];
 unsigned int n_points=0;
 //char StrBufA[1250];
@@ -101,8 +101,6 @@ DWORD fre_clust;
 uint32_t total, free_space;
 // *************************** //
 uint8_t opcion;
-__IO bool TxCompleted=true;
-__IO bool RxCompleted=true;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -1369,12 +1367,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
-void HAL_SPI_TxCpltCallback(SPI_HandleTypeDef *hspi){
-	TxCompleted=true;
-}
-void HAL_SPI_RxCpltCallback(SPI_HandleTypeDef *hspi){
-	RxCompleted=true;
-}
+
 
 /* USER CODE END 4 */
 

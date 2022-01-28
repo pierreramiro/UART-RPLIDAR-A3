@@ -16,7 +16,7 @@ data=(rot_matrix*data')';
 %En caso el RPLIDAR está volteado, basta con cambiar de signo a la
 %componente 'x' y realizar un ajuste de angulo si es necesario 
 
-scatter(data(:,1),data(:,2));
+scatter(-data(:,1),data(:,2));
 %% Analisis de los indices
 %init_index=1;
 %end_index=200;

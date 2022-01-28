@@ -12,8 +12,6 @@
 
 extern unsigned int 		n_points;
 extern char 				StrBufA[400*20];
-extern __IO uint8_t			TxCompleted;
-extern __IO uint8_t			RxCompleted;
 extern uint8_t				ReceivingData;
 extern SPI_HandleTypeDef 	hspi1;
 #define HSPI_SDCARD		 	&hspi1
@@ -49,9 +47,6 @@ static void SPI_TxByte(uint8_t data)
 {
 	while(!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE));
 	HAL_SPI_Transmit(HSPI_SDCARD, &data, 1, SPI_TIMEOUT);
-	//HAL_SPI_Transmit_IT(HSPI_SDCARD, &data, 1);
-	//while(TxState==0);
-	//TxState=0;
 }
 
 /* SPI transmit buffer */
@@ -59,9 +54,6 @@ static void SPI_TxBuffer(uint8_t *buffer, uint16_t len)
 {
 	while(!__HAL_SPI_GET_FLAG(HSPI_SDCARD, SPI_FLAG_TXE));
 	HAL_SPI_Transmit(HSPI_SDCARD, buffer, len, SPI_TIMEOUT);
-	//HAL_SPI_Transmit_IT(HSPI_SDCARD, buffer, len);
-	//while(TxState==0);
-	//TxState=0;
 }
 
 /* SPI receive a byte */
@@ -177,7 +169,7 @@ static bool SD_RxDataBlock(BYTE *buff, UINT len)
 	/* receive data */
 	do {
 		SPI_RxBytePtr(buff++);
-	} while(len--);
+	} while(--len);
 
 	/* discard CRC */
 	SPI_RxByte();
@@ -298,20 +290,11 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					temp=MainBuf[3];
 					temp|=(MainBuf[4]<<8);
 					distance=(float)temp/4.0;
-					//distance=temp;
 					//Procedemos a convertir en coordenadas cartesianas
 					x=distance*cosf(angle+M_PI_2);
 					y=distance*sinf(angle+M_PI_2);
 					//Realizamos la conversión float a string
 					sprintf(chars_buf,"%.2f,%.2f\n",x,y);
-					/*float_to_char(x,chars_buf);
-					StrBufA[0]='\0';
-					strcat(StrBufA,chars_buf);
-					strcat(StrBufA,",");
-					float_to_char(y,chars_buf);
-					strcat(StrBufA,chars_buf);
-					strcat(StrBufA,"\n");*/
-					//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 				}else{
 					chars_buf[0]='I';
 					chars_buf[1]='n';
@@ -324,16 +307,10 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					chars_buf[8]='\0';
 				}
 				n_points++;
-				//if(AFlag){
-					strcat(StrBufA,chars_buf);
-				//}else{
-				//	strcat(StrBufB,chars_buf);
-				//}
-				//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+				strcat(StrBufA,chars_buf);
 			}
 		}
 	}
-
 	/* transmit 0x05 accepted */
 	if ((resp & 0x1F) == 0x05) return TRUE;
 
@@ -377,54 +354,6 @@ static BYTE SD_SendCmd(BYTE cmd, uint32_t arg)
 
 	return res;
 }
-
-static BYTE mySD_SendCmd_IT(BYTE cmd, uint32_t arg,bool actRx)
-{
-	uint8_t crc, res;
-	uint8_t buffer[6];
-
-	/* wait SD ready */
-	if (SD_ReadyWait() != 0xFF) return 0xFF;
-
-	/* transmit command */
-	buffer[0]=cmd; 					/* Command */
-	buffer[1]=(uint8_t)(arg >> 24);		/* Argument[31..24] */
-	buffer[2]=(uint8_t)(arg >> 16);		/* Argument[23..16] */
-	buffer[3]=(uint8_t)(arg >> 8);		/* Argument[15..8] */
-	buffer[4]=(uint8_t)arg;				/* Argument[7..0] */
-
-
-	/* prepare CRC */
-	if(cmd == CMD0) crc = 0x95;	/* CRC for CMD0(0) */
-	else if(cmd == CMD8) crc = 0x87;	/* CRC for CMD8(0x1AA) */
-	else crc = 1;
-
-	/* transmit CRC */
-	buffer[5]=crc;
-	while(!TxCompleted);
-	TxCompleted=0;
-	HAL_SPI_Transmit_IT(&hspi1, buffer, 6);
-
-
-	//Si no hace falta la recepción podemos no considerarla
-	if (actRx){
-		/* Skip a stuff byte when STOP_TRANSMISSION */
-		if (cmd == CMD12) SPI_RxByte();
-
-		/* receive response */
-		uint8_t n = 10;
-		do {
-			res = SPI_RxByte();
-		} while ((res & 0x80) && --n);
-
-		return res;
-	}else{
-		//while(!RxCompleted); Not sure about esto
-		HAL_SPI_Receive_IT(&hspi1, NULL, 12);
-		return 0;
-	}
-}
-
 
 /***************************************
  * user_diskio.c functions
