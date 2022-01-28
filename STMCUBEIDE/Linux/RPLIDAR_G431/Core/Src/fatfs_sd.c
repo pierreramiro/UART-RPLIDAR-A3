@@ -279,6 +279,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					MainBuf[z]=UART1buf_getc();
 				}
 				//Tenemos ya 5 datos para procesar
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 				if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)){
 					//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 					temp=(MainBuf[1]>>1)&0x7F;
@@ -308,6 +309,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 				}
 				n_points++;
 				strcat(StrBufA,chars_buf);
+				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
 			}
 		}
 	}
