@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="TxCom"/>
+		<item key="selection" value="Time"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
+			<item value="time"/>
+			<item value="timer"/>
 			<item value="TXCom"/>
 			<item value="_IT"/>
 			<item value="mySD_SendCmd_IT"/>
@@ -21,8 +23,6 @@
 			<item value="dma"/>
 			<item value="HAL_SPI_Transmit"/>
 			<item value="HAL_SPI"/>
-			<item value="f_puts"/>
-			<item value="res"/>
 		</list>
 		<list key="replacehistory">
 			<item value="StrBufA"/>

@@ -9,9 +9,13 @@
 #include "string.h"
 #include "stdio.h"
 #include "uart_buf_g4.h"
+#include "main.h"
+
 
 extern unsigned int 		n_points;
-extern char 				StrBufA[400*20];
+extern char					StrBufA[150*30];
+extern char 				StrBufB[150*30];
+extern bool 				Aflag;
 extern uint8_t				ReceivingData;
 extern SPI_HandleTypeDef 	hspi1;
 #define HSPI_SDCARD		 	&hspi1
@@ -121,8 +125,6 @@ static void SD_PowerOn(void)
 	args[5] = 0x95;		/* CRC */
 
 	SPI_TxBuffer(args, sizeof(args));
-	//while(TxState==0);
-	//TxState==0;
 
 	/* wait response */
 	while ((SPI_RxByte() != 0x01) && cnt)
@@ -132,8 +134,6 @@ static void SD_PowerOn(void)
 
 	DESELECT();
 	SPI_TxByte(0XFF);
-	//while(TxState==0);
-	//TxState==0;
 
 	PowerFlag = 1;
 }
@@ -189,12 +189,12 @@ static bool SD_TxDataBlock(const uint8_t *buff, BYTE token)
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 	/* wait SD ready */
 	if (SD_ReadyWait() != 0xFF) return FALSE;
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
 
 	/* transmit token */
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 	SPI_TxByte(token);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
 
 
 	/* if it's not STOP token, transmit data */
@@ -230,24 +230,23 @@ static bool SD_TxDataBlock(const uint8_t *buff, BYTE token)
 static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 {
 	uint8_t resp;
-	uint8_t i = 0;
-	uint8_t MainBuf[10];
+	unsigned int i = 0;
+	char MainBuf[5];
 	uint16_t temp;
 	float angle,distance;
 	float x,y;
-	//unsigned int n_bytes=0;
-	char chars_buf[24];
+	char chars_buf[30];
 
 
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 	/* wait SD ready */
 	if (SD_ReadyWait() != 0xFF) return FALSE;
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
 
 	/* transmit token */
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 	SPI_TxByte(token);
-	HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
+	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
 
 
 	/* if it's not STOP token, transmit data */
@@ -271,19 +270,17 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 
 		/* recv buffer clear */
 		//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
-		//Debemos resetear el StrBuf ya que se completó la transacción!!
-		if (ReceivingData) StrBufA[0]='\0';//Analizar si es necesario crear alguna otra variable de Status que permita realizar esta acción.
+		uint8_t z;
 		while (SPI_RxByte() == 0){
 			if (ReceivingData){
 				//seguimos guardando data en buffer
-				for (int z=0;z<5;z++){
+				for (z=0;z<5;z++){
 					while(UART1buf_peek()<0);
 					MainBuf[z]=UART1buf_getc();
 				}
 				//Tenemos ya 5 datos para procesar
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 				if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)){
-					//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+					HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 					temp=(MainBuf[1]>>1)&0x7F;
 					temp|=(MainBuf[2]<<7);
 					angle=(float)temp/64.0;
@@ -297,7 +294,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					x=distance*cosf(angle+M_PI_2);
 					y=distance*sinf(angle+M_PI_2);
 					//Realizamos la conversión float a string
-					sprintf(chars_buf,"%.2f,%.2f\n",x,y);
+					sprintf(chars_buf,"%.1f,%.1f\n",x,y);
 				}else{
 					chars_buf[0]='I';
 					chars_buf[1]='n';
@@ -310,8 +307,12 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					chars_buf[8]='\0';
 				}
 				n_points++;
-				strcat(StrBufA,chars_buf);
-				HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 0);
+				if (Aflag){
+					strcat(StrBufA,chars_buf);
+				}else{
+					strcat(StrBufB,chars_buf);
+				}
+				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			}
 		}
 	}

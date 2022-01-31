@@ -67,12 +67,11 @@ UART_HandleTypeDef huart2;
 /* USER CODE BEGIN PV */
 // MainBuf[MainBuf_SIZE];
 uint8_t ReceivingData=false;
-bool AFlag=true;
+bool Aflag=true;
 //char MainBuf[MainBuf_SIZE];
-char StrBufA[460*20];
-//char StrBufB[128*40];
+char StrBufA[150*30];
+char StrBufB[150*30];
 unsigned int n_points=0;
-//char StrBufA[1250];
 //float ValBuf[4000];
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
@@ -106,9 +105,9 @@ uint8_t opcion;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
-static void MX_SPI1_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_SPI1_Init(void);
 /* USER CODE BEGIN PFP */
 
 void setMotorDutyCycle(float duty){
@@ -117,7 +116,7 @@ void setMotorDutyCycle(float duty){
 	if (duty!=0){
 		//El ARR tiene como valor máximo 6800@170Mhz
 		//TIM1->CCR1 = (uint32_t)duty*57.6;
-		TIM1->CCR1 = (uint32_t)duty*68.0;
+		TIM1->CCR1 = (uint32_t)duty*64.0;
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 		HAL_Delay(3);
 	}
@@ -766,9 +765,10 @@ void SAVE_SCAN_DATA(){
 	float angle,distance;
 	float x,y;
 	unsigned int n_bytes=0;
-	char chars_buf[24];
-	uint8_t MainBuf[10];
+	char chars_buf[30];
+	char MainBuf[5];
 	StrBufA[0]='\0';
+	StrBufB[0]='\0';
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
 	f_unlink("/test.csv");
 	//Ahora lo creamos
@@ -776,8 +776,7 @@ void SAVE_SCAN_DATA(){
 	//Escribimos la primera línea
 	while(f_write(&fil, "Data a almacenar [x,y]:\n",sizeof("Data a almacenar [x,y]:\n") , &bw)!= FR_OK);
 	//Ahora encendemos el motor
-	setMotorDutyCycle(60);
-	HAL_Delay(1000);
+	setMotorDutyCycle(50);
 	//Limpiamos el buffer de Recepción
 	UART1buf_flushRx();
 	//Enviamos el comando por uart
@@ -904,7 +903,7 @@ void SAVE_SCAN_DATA(){
 			break;
 		}
 	}
-	//TxState=TRANSFER_COMPLETE;
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 	while(opcion=='2'){//Recibe y guarda
 		if (!(UART1buf_peek()<0)){
 			//Hay dato,lo guardamos
@@ -915,14 +914,6 @@ void SAVE_SCAN_DATA(){
 		if (n_bytes>4){
 			//Tenemos ya 5 datos para procesar
 			n_bytes=0;
-			/*if((n_points&0x00000007)==7){
-				//no leemos
-				chars_buf[0]='0';
-				chars_buf[1]=',';
-				chars_buf[2]='0';
-				chars_buf[3]='\n';
-				chars_buf[4]='\0';
-			}else */
 			if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)){
 				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
 				temp=(MainBuf[1]>>1)&0x7F;
@@ -939,15 +930,7 @@ void SAVE_SCAN_DATA(){
 				x=distance*cosf(angle+M_PI_2);
 				y=distance*sinf(angle+M_PI_2);
 				//Realizamos la conversión float a string
-				sprintf(chars_buf,"%.2f,%.2f\n",x,y);
-				/*float_to_char(x,chars_buf);
-				StrBufA[0]='\0';
-				strcat(StrBufA,chars_buf);
-				strcat(StrBufA,",");
-				float_to_char(y,chars_buf);
-				strcat(StrBufA,chars_buf);
-				strcat(StrBufA,"\n");*/
-				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+				sprintf(chars_buf,"%.1f,%.1f\n",x,y);
 			}else{
 				chars_buf[0]='I';
 				chars_buf[1]='n';
@@ -960,31 +943,26 @@ void SAVE_SCAN_DATA(){
 				chars_buf[8]='\0';
 			}
 			n_points++;
-			//if(AFlag){
+			if (Aflag){
 				strcat(StrBufA,chars_buf);
-			//}else{
-			//	strcat(StrBufB,chars_buf);
-			//}
-			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+			}else{
+				strcat(StrBufB,chars_buf);
+			}
 		}
-		//&&(TxState==TRANSFER_COMPLETE)
 		if((n_points>64)){
-			//Podemos escribir en la SD
-			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
-			//TxState=TRANSFER_WAIT;
-			//f_puts(StrBufA, &fil);
-			//if(AFlag){
-				//AFlag=0;
-				f_write(&fil, StrBufA, strlen(StrBufA),&bw);
-				StrBufA[0]='\0';
-			//}else{
-				//AFlag=1;
-				//f_write(&fil, StrBufB, strlen(StrBufB),&bw);
-				//StrBufB[0]='\0';
-			//}
-			//while(TxState==TRANSFER_WAIT);
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			n_points=0;
-			//HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+			if (Aflag){
+				//Comenzamos a guardar en B
+				Aflag=false;
+				StrBufB[0]='\0';
+				f_write(&fil, StrBufA, strlen(StrBufA),&bw);
+			}else{
+				//Comenzamos a guardar en A
+				Aflag=true;
+				StrBufA[0]='\0';
+				f_write(&fil, StrBufB, strlen(StrBufB),&bw);
+			}
 		}
 		if (!(LPUART1buf_peek()<0)){
 			LPUART1buf_puts("Deteniendo SCAN\n\r");
@@ -994,6 +972,7 @@ void SAVE_SCAN_DATA(){
 			break;
 		}
 	}
+	HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 /**************************************************************/
 	ReceivingData=false;
 	LPUART1buf_getc();
@@ -1043,12 +1022,12 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  MX_SPI1_Init();
   if (MX_FATFS_Init() != APP_OK) {
     Error_Handler();
   }
   MX_TIM1_Init();
   MX_USART2_UART_Init();
+  MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
   char buffer[64];
   //Inicializamos los UARTs
@@ -1127,7 +1106,7 @@ void SystemClock_Config(void)
 
   /** Configure the main internal regulator output voltage
   */
-  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1_BOOST);
+  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
@@ -1136,8 +1115,8 @@ void SystemClock_Config(void)
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
   RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
-  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV4;
-  RCC_OscInitStruct.PLL.PLLN = 85;
+  RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+  RCC_OscInitStruct.PLL.PLLN = 18;
   RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
   RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV2;
   RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
@@ -1183,7 +1162,7 @@ static void MX_SPI1_Init(void)
   hspi1.Init.CLKPolarity = SPI_POLARITY_LOW;
   hspi1.Init.CLKPhase = SPI_PHASE_1EDGE;
   hspi1.Init.NSS = SPI_NSS_SOFT;
-  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_64;
+  hspi1.Init.BaudRatePrescaler = SPI_BAUDRATEPRESCALER_16;
   hspi1.Init.FirstBit = SPI_FIRSTBIT_MSB;
   hspi1.Init.TIMode = SPI_TIMODE_DISABLE;
   hspi1.Init.CRCCalculation = SPI_CRCCALCULATION_DISABLE;
@@ -1223,7 +1202,7 @@ static void MX_TIM1_Init(void)
   htim1.Instance = TIM1;
   htim1.Init.Prescaler = 0;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim1.Init.Period = 6799;
+  htim1.Init.Period = 5759;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim1.Init.RepetitionCounter = 0;
   htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
