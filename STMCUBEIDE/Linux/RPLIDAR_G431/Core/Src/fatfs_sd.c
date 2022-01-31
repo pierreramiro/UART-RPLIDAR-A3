@@ -272,7 +272,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 		/* recv buffer clear */
 		//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 		//Debemos resetear el StrBuf ya que se completó la transacción!!
-		StrBufA[0]='\0';//Analizar si es necesario crear alguna otra variable de Status que permita realizar esta acción.
+		if (ReceivingData) StrBufA[0]='\0';//Analizar si es necesario crear alguna otra variable de Status que permita realizar esta acción.
 		while (SPI_RxByte() == 0){
 			if (ReceivingData){
 				//seguimos guardando data en buffer
