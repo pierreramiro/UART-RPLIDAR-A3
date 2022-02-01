@@ -310,7 +310,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					}
 				}else{
 					chars_buf[0]='0';
-					chars_buf[1]='.';
+					chars_buf[1]=',';
 					chars_buf[2]='0';
 					chars_buf[3]='\n';
 					chars_buf[4]='\0';
@@ -322,6 +322,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 				}else{
 					strcat(StrBufB,chars_buf);
 				}
+				if (n_points<150) break;
 				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			}
 		}
