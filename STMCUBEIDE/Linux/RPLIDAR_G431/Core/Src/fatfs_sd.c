@@ -12,9 +12,11 @@
 #include "main.h"
 
 
-extern unsigned int 		n_points;
-extern char					StrBufA[150*30];
-extern char 				StrBufB[150*30];
+extern uint8_t 		n_points;
+extern char					StrBufA[205*20];
+extern char 				StrBufB[205*20];
+extern char 				MainBuf[5];
+extern char 				chars_buf[40];
 extern bool 				Aflag;
 extern uint8_t				ReceivingData;
 extern SPI_HandleTypeDef 	hspi1;
@@ -230,12 +232,10 @@ static bool SD_TxDataBlock(const uint8_t *buff, BYTE token)
 static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 {
 	uint8_t resp;
-	unsigned int i = 0;
-	char MainBuf[5];
+	int i = 0;
 	uint16_t temp;
 	float angle,distance;
 	float x,y;
-	char chars_buf[30];
 
 
 	//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
@@ -271,6 +271,7 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 		/* recv buffer clear */
 		//HAL_GPIO_WritePin(GPIOB, GPIO_PIN_3, 1);
 		uint8_t z;
+		i=0;
 		while (SPI_RxByte() == 0){
 			if (ReceivingData){
 				//seguimos guardando data en buffer
@@ -279,34 +280,43 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 					MainBuf[z]=UART1buf_getc();
 				}
 				//Tenemos ya 5 datos para procesar
-				if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)){
-					HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
-					temp=(MainBuf[1]>>1)&0x7F;
-					temp|=(MainBuf[2]<<7);
-					angle=(float)temp/64.0;
-					angle=angle*M_PI/180.0;
-					// ******Decodificamos la distancia****  //
-					//Desplazamos los bits
-					temp=MainBuf[3];
-					temp|=(MainBuf[4]<<8);
-					distance=(float)temp/4.0;
-					//Procedemos a convertir en coordenadas cartesianas
-					x=distance*cosf(angle+M_PI_2);
-					y=distance*sinf(angle+M_PI_2);
-					//Realizamos la conversión float a string
-					sprintf(chars_buf,"%.1f,%.1f\n",x,y);
+				if (n_points<=35){
+					if((((MainBuf[0]&0x03)==1)||((MainBuf[0]&0x03)==2))&&((MainBuf[1]&0x01)==1)&&n_points){
+						HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,1);
+						temp=(MainBuf[1]>>1)&0x7F;
+						temp|=(MainBuf[2]<<7);
+						angle=(float)temp/64.0;
+						angle=angle*M_PI/180.0;
+						// ******Decodificamos la distancia****  //
+						//Desplazamos los bits
+						temp=MainBuf[3];
+						temp|=(MainBuf[4]<<8);
+						distance=(float)temp/4.0;
+						//Procedemos a convertir en coordenadas cartesianas
+						x=distance*cosf(angle+M_PI_2);
+						y=distance*sinf(angle+M_PI_2);
+						//Realizamos la conversión float a string
+						sprintf(chars_buf,"%.1f,%.1f\n",x,y);
+					}else{
+						chars_buf[0]='I';
+						chars_buf[1]='n';
+						chars_buf[2]='f';
+						chars_buf[3]=',';
+						chars_buf[4]='I';
+						chars_buf[5]='n';
+						chars_buf[6]='f';
+						chars_buf[7]='\n';
+						chars_buf[8]='\0';
+					}
 				}else{
-					chars_buf[0]='I';
-					chars_buf[1]='n';
-					chars_buf[2]='f';
-					chars_buf[3]=',';
-					chars_buf[4]='I';
-					chars_buf[5]='n';
-					chars_buf[6]='f';
-					chars_buf[7]='\n';
-					chars_buf[8]='\0';
+					chars_buf[0]='0';
+					chars_buf[1]='.';
+					chars_buf[2]='0';
+					chars_buf[3]='\n';
+					chars_buf[4]='\0';
 				}
 				n_points++;
+				i++;
 				if (Aflag){
 					strcat(StrBufA,chars_buf);
 				}else{

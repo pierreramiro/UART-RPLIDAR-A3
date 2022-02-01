@@ -48,8 +48,6 @@
 #define START_FLAG_1         0xA5
 #define START_FLAG_2         0x5A
 /*Tamaños del buffer*/
-#define  MainBuf_SIZE 		(10*5)//13->8192 14->16384 15->32768 16->65536
-#define precision 3  //precision for decimal digits
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -69,10 +67,12 @@ UART_HandleTypeDef huart2;
 uint8_t ReceivingData=false;
 bool Aflag=true;
 //char MainBuf[MainBuf_SIZE];
-char StrBufA[150*30];
-char StrBufB[150*30];
-unsigned int n_points=0;
-//float ValBuf[4000];
+char StrBufA[205*20];
+char StrBufB[205*20];
+char MainBuf[5];
+char chars_buf[40];
+uint8_t n_points=0;
+
 const uint8_t STOP_REQUEST[2]={START_FLAG_1,STOP_RPL};
 const uint8_t RESET_REQUEST[2]={START_FLAG_1,RESET_RPL};
 const uint8_t SCAN_REQUEST[2]={START_FLAG_1,SCAN_RPL};
@@ -90,14 +90,9 @@ const uint8_t FORCE_SCAN_REQUEST[7]={START_FLAG_1,FORCE_SCAN_RPL};
 /*Variables involucradas para la SD*/
 FATFS fs;  // file system
 FIL fil; // File
-FILINFO fno;
 FRESULT fresult;  // result
 UINT br, bw;  // File read/write count
 
-// **** capacity related ***** //
-FATFS *pfs;
-DWORD fre_clust;
-uint32_t total, free_space;
 // *************************** //
 uint8_t opcion;
 /* USER CODE END PV */
@@ -115,8 +110,8 @@ void setMotorDutyCycle(float duty){
 	HAL_Delay(3);
 	if (duty!=0){
 		//El ARR tiene como valor máximo 6800@170Mhz
-		//TIM1->CCR1 = (uint32_t)duty*57.6;
-		TIM1->CCR1 = (uint32_t)duty*64.0;
+		TIM1->CCR1 = (uint32_t)duty*57.6;
+		//TIM1->CCR1 = (uint32_t)duty*64.0;
 		HAL_TIM_PWM_Start(&htim1, TIM_CHANNEL_1);
 		HAL_Delay(3);
 	}
@@ -711,7 +706,7 @@ void SEND_GET_INFO(){
 //
 //
 ///************************************************************/
-void float_to_char(float f, char *p) {
+/*void float_to_char(float f, char *p) {
 	int a,b,c,k,l=0,m,i=0;
 	// check for negetive float
 	if(f<0.0)
@@ -734,10 +729,10 @@ void float_to_char(float f, char *p) {
 	k--;
 	}
 	// number of digits in whole number are k+1
-	/*
-	extracting most significant digit i.e. right most digit , and concatenating to string
-	obtained as quotient by dividing number by 10^k where k = (number of digit -1)
-	*/
+
+	//extracting most significant digit i.e. right most digit , and concatenating to string
+	//obtained as quotient by dividing number by 10^k where k = (number of digit -1)
+
 	for(l=k+1;l>0;l--)
 	{
 		b = pow(10,l-1);
@@ -746,7 +741,7 @@ void float_to_char(float f, char *p) {
 		a%=b;
 	}
 	p[i++] = '.';
-	/* extracting decimal digits till precision */
+	// extracting decimal digits till precision
 	for(l=0;l<precision;l++)
 	{
 		f*=10.0;
@@ -755,7 +750,7 @@ void float_to_char(float f, char *p) {
 		f-=b;
 	}
 	p[i]='\0';
-}
+}*/
 void SAVE_SCAN_DATA(){
 	if ((opcion!='1')&&(opcion!='2')&&(opcion!='3')&&(opcion!='0')&&(opcion!='4')){
 		return;
@@ -764,9 +759,7 @@ void SAVE_SCAN_DATA(){
 	uint16_t temp;
 	float angle,distance;
 	float x,y;
-	unsigned int n_bytes=0;
-	char chars_buf[30];
-	char MainBuf[5];
+	uint8_t n_bytes=0;
 	StrBufA[0]='\0';
 	StrBufB[0]='\0';
 	//Primero para crear el archivo en donde almacenaremos la data, debemos eliminar el existente
@@ -824,13 +817,6 @@ void SAVE_SCAN_DATA(){
 				y=distance*sinf(angle+M_PI_2);
 				//Realizamos la conversión float a string
 				sprintf(chars_buf,"%.3f,%.3f\n",x,y);
-				/*float_to_char(x,chars_buf);
-				StrBufA[0]='\0';
-				strcat(StrBufA,chars_buf);
-				strcat(StrBufA,",");
-				float_to_char(y,chars_buf);
-				strcat(StrBufA,chars_buf);
-				strcat(StrBufA,"\n");*/
 				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			}else{
 				StrBufA[0]='I';
@@ -851,10 +837,7 @@ void SAVE_SCAN_DATA(){
 			ReceivingData=false;
 			//Salimos del while
 			break;
-
 		}
-
-
 	}
 	while(opcion=='1'){//Solo vemos el punto de inicio de SCAN
 		if (!(UART1buf_peek()<0)){
@@ -949,7 +932,7 @@ void SAVE_SCAN_DATA(){
 				strcat(StrBufB,chars_buf);
 			}
 		}
-		if((n_points>64)){
+		if((n_points>50)){
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			n_points=0;
 			if (Aflag){
@@ -1029,7 +1012,6 @@ int main(void)
   MX_USART2_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-  char buffer[64];
   //Inicializamos los UARTs
   LPUART1buf_init(115200,SERIAL_8N1,0);
   UART1buf_init(256000,SERIAL_8N1,0);
@@ -1040,16 +1022,6 @@ int main(void)
   //fresult=f_mount(&fs, "/", 1);
   while (f_mount(&fs,"/", 1) != FR_OK);
   LPUART1buf_puts("SD CARD mounted successfully...\n\r");
-  /*************** Card capacity details ********************/
-  /* Check free space */
-  //fresult=f_getfree("", &fre_clust, &pfs);
-  while(f_getfree("", &fre_clust, &pfs)!= FR_OK);
-  total = (uint32_t)((pfs->n_fatent - 2) * pfs->csize * 0.5);
-  sprintf (buffer,"SD CARD Total Size: \t%lu\n\r",total);
-  LPUART1buf_puts(buffer);
-  free_space = (uint32_t)(fre_clust * pfs->csize * 0.5);
-  sprintf (buffer, "SD CARD Free Space: \t%lu\n\r",free_space);
-  LPUART1buf_puts(buffer);
   //Enviamos el comando de RESET
   SEND_RESET_REQUEST();//DESCOMENTAR LUEGO DE TEMRINAR CON EL SD
   /* USER CODE END 2 */
