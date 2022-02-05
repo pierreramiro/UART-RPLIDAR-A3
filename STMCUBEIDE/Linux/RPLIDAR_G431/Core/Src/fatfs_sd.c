@@ -158,7 +158,7 @@ static bool SD_RxDataBlock(BYTE *buff, UINT len)
 	uint8_t token;
 
 	/* timeout 200ms */
-	Timer1 = 200;
+	Timer1 = 20;
 
 	/* loop until receive a response or timeout */
 	do {
@@ -322,8 +322,10 @@ static bool mySD_TxDataBlockIT(const uint8_t *buff, BYTE token)
 				}else{
 					strcat(StrBufB,chars_buf);
 				}
-				if (n_points<150) break;
 				HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
+				if (n_points>100){
+					break;
+				}
 			}
 		}
 	}

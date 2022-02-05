@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <section name="Workbench">
 	<section name="org.eclipse.ui.texteditor.FindReplaceDialog">
-		<item key="selection" value="Time"/>
+		<item key="selection" value="fno"/>
 		<item key="wrap" value="true"/>
 		<item key="casesensitive" value="false"/>
 		<item key="wholeword" value="false"/>
 		<item key="incremental" value="false"/>
 		<item key="isRegEx" value="false"/>
 		<list key="findhistory">
+			<item value="fno"/>
+			<item value="fil"/>
 			<item value="time"/>
 			<item value="timer"/>
 			<item value="TXCom"/>
@@ -21,8 +23,6 @@
 			<item value="StrBuf"/>
 			<item value="MainBuf"/>
 			<item value="dma"/>
-			<item value="HAL_SPI_Transmit"/>
-			<item value="HAL_SPI"/>
 		</list>
 		<list key="replacehistory">
 			<item value="StrBufA"/>

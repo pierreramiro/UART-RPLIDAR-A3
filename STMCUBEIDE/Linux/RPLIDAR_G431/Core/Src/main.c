@@ -931,9 +931,9 @@ void SAVE_SCAN_DATA(){
 			}else{
 				strcat(StrBufB,chars_buf);
 			}
+			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 		}
 		if((n_points>64)){
-			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin,0);
 			n_points=0;
 			if (Aflag){
 				//Comenzamos a guardar en B
